@@ -1,0 +1,1 @@
+"""GreenPitch application package."""
