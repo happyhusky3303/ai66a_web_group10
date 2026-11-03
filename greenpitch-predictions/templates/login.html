@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#121212">
+    <title>Sign in — GreenPitch</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/app.js" defer></script>
+  </head>
+  <body data-page="auth">
+    <div class="shell auth-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="GreenPitch home">
+          <span class="brand-mark" aria-hidden="true">G</span>
+          <span>GreenPitch<span class="brand-caption">MATCH INTELLIGENCE</span></span>
+        </a>
+        <a class="button button-quiet" href="/">Back to match center</a>
+      </header>
+      <main class="auth-main">
+        <section class="card auth-card">
+          <p class="eyebrow">YOUR MATCH CENTER</p>
+          <h1 id="auth-heading">Welcome back</h1>
+          <p id="auth-description" class="muted">Sign in to submit predictions and follow your points.</p>
+          <div id="auth-message" class="notice hidden" role="alert" aria-live="assertive"></div>
+          <form id="auth-form">
+            <label for="username">Username</label>
+            <input id="username" name="username" type="text" minlength="3" maxlength="32" autocomplete="username" required>
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required>
+            <button id="auth-submit" class="button button-primary auth-submit" type="submit">Sign in</button>
+          </form>
+          <p class="auth-switch"><span id="auth-switch-label">New to GreenPitch?</span> <button id="auth-toggle" class="text-button" type="button">Create an account</button></p>
+          <p class="card-footnote">Free predictions · No deposits · No real-money betting</p>
+        </section>
+      </main>
+      <footer class="footer"><span>GREENPITCH / FOOTBALL PREDICTIONS</span><span>POINTS ONLY · NO REAL-MONEY BETTING</span></footer>
+    </div>
+  </body>
+</html>

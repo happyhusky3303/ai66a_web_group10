@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#121212">
+    <title>GreenPitch — Football Predictions</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/app.js" defer></script>
+  </head>
+  <body data-page="dashboard">
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="GreenPitch home">
+          <span class="brand-mark" aria-hidden="true">G</span>
+          <span>GreenPitch<span class="brand-caption">MATCH INTELLIGENCE</span></span>
+        </a>
+        <nav class="top-nav" aria-label="Main navigation">
+          <span class="live-indicator"><span></span> LIVE DATA</span>
+          <a id="auth-link" class="button button-quiet" href="/login">Sign in</a>
+          <button id="logout-button" class="button button-quiet hidden" type="button">Sign out</button>
+        </nav>
+      </header>
+
+      <main>
+        <section class="page-heading">
+          <div>
+            <p class="eyebrow">OVERVIEW / MATCH CENTER</p>
+            <h1>Match center</h1>
+            <p class="muted">Make your call before kick-off. Track every result on the global leaderboard.</p>
+          </div>
+          <button id="refresh-button" class="button button-outline" type="button">Refresh matches</button>
+        </section>
+
+        <section class="dashboard-grid" aria-label="Prediction dashboard">
+          <article class="card points-card">
+            <div class="card-topline"><span class="eyebrow">YOUR TOTAL POINTS</span><span class="status-chip">SEASON</span></div>
+            <p id="user-name" class="muted account-label">Sign in to track your score</p>
+            <p id="user-points" class="metric">—</p>
+            <p class="card-footnote">Start at 1,000 points · +100 correct · −100 incorrect</p>
+          </article>
+
+          <section class="card matches-card" aria-labelledby="matches-heading">
+            <div class="section-heading">
+              <div><p class="eyebrow">FIXTURES & RESULTS</p><h2 id="matches-heading">Matches</h2></div>
+              <span id="match-count" class="count-label">— fixtures</span>
+            </div>
+            <div id="app-message" class="notice hidden" role="status" aria-live="polite"></div>
+            <div id="matches-loading" class="loading-state">Loading match data…</div>
+            <div id="matches-empty" class="empty-state hidden">No fixtures are available for this period.</div>
+            <div class="table-wrap">
+              <table class="match-table">
+                <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">PREDICT</th></tr></thead>
+                <tbody id="matches-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <aside class="card leaderboard-card" aria-labelledby="leaderboard-heading">
+            <div class="section-heading">
+              <div><p class="eyebrow">GLOBAL RANKING</p><h2 id="leaderboard-heading">Leaderboard</h2></div>
+              <span class="trophy" aria-hidden="true">TOP 50</span>
+            </div>
+            <div id="leaderboard-loading" class="loading-state">Loading rankings…</div>
+            <ol id="leaderboard-list" class="leaderboard-list"></ol>
+            <p id="leaderboard-empty" class="empty-state hidden">Be the first to join the rankings.</p>
+          </aside>
+        </section>
+      </main>
+      <footer class="footer"><span>GREENPITCH / FOOTBALL PREDICTIONS</span><span>POINTS ONLY · NO REAL-MONEY BETTING</span></footer>
+    </div>
+  </body>
+</html>
