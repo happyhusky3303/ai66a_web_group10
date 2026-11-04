@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    init: true
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: sqlite:////data/predictions.db
+      FOOTBALL_DATA_API_KEY: ${FOOTBALL_DATA_API_KEY:-}
+      SESSION_SECRET_KEY: "${SESSION_SECRET_KEY:?Set SESSION_SECRET_KEY in .env}"
+      ADMIN_TOKEN: "${ADMIN_TOKEN:?Set ADMIN_TOKEN in .env}"
+      SESSION_HTTPS_ONLY: ${SESSION_HTTPS_ONLY:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - predictions_data:/data
+    restart: unless-stopped
+
+volumes:
+  predictions_data:

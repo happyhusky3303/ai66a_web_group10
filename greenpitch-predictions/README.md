@@ -38,6 +38,41 @@ omitted for local development, the app generates a temporary key at startup, so
 sessions will be invalidated when the process restarts. `ADMIN_TOKEN` is
 required to resolve matches through the internal endpoint.
 
+## Run with Docker
+
+Install Docker Desktop, then from this directory create a local environment
+file and replace the example secrets with unique random values:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Set `FOOTBALL_DATA_API_KEY` in `.env` to enable live match listings, then build
+and start the app:
+
+```powershell
+docker compose up --build -d
+```
+
+Open <http://localhost:8000>; the API documentation is at
+<http://localhost:8000/docs>. Docker Compose stores the SQLite database in the
+persistent `predictions_data` volume. Stop the app with
+`docker compose down`; the database volume is retained. To remove the database
+as well, run `docker compose down --volumes`.
+
+If the browser says it cannot connect, run Compose from this project directory
+and recreate the container so the host port mapping is applied:
+
+```powershell
+docker compose up --build --force-recreate -d
+docker compose ps
+```
+
+In the `PORTS` column, confirm that `8000` is mapped to host port `8000`
+(shown as `0.0.0.0:8000->8000/tcp`).
+
+For production behind HTTPS, set `SESSION_HTTPS_ONLY=true` in `.env`.
+
 ## API
 
 - `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`
