@@ -98,6 +98,27 @@ async function loadMatches() {
     else endedEmpty?.classList.add("hidden");
     for (const match of ended) endedBody?.append(createMatchRow(match));
 
+    // Populate leagues dropdown
+    const leagueSelect = document.querySelector("#match-league-filter");
+    if (leagueSelect) {
+      const currentSelection = leagueSelect.value;
+      const leagues = Array.from(new Set(matches.map((m) => m.competition).filter(Boolean))).sort();
+      leagueSelect.replaceChildren();
+      const allOption = document.createElement("option");
+      allOption.value = "all";
+      allOption.textContent = "All leagues";
+      leagueSelect.append(allOption);
+      for (const league of leagues) {
+        const option = document.createElement("option");
+        option.value = league;
+        option.textContent = league;
+        leagueSelect.append(option);
+      }
+      if (leagues.includes(currentSelection)) {
+        leagueSelect.value = currentSelection;
+      }
+    }
+
     applyMatchFilter();
   } catch (error) {
     count.textContent = "Unavailable";
@@ -112,41 +133,98 @@ function applyMatchFilter() {
   const upcomingGroup = document.querySelector("#upcoming-group");
   const endedGroup = document.querySelector("#ended-group");
   const count = document.querySelector("#match-count");
-  const select = document.querySelector("#match-type-filter");
-  const filter = select ? select.value : "all";
 
-  const ongoingCount = ongoingGroup?.querySelectorAll("tbody tr").length || 0;
-  const upcomingCount = upcomingGroup?.querySelectorAll("tbody tr").length || 0;
-  const endedCount = endedGroup?.querySelectorAll("tbody tr").length || 0;
+  const typeSelect = document.querySelector("#match-type-filter");
+  const leagueSelect = document.querySelector("#match-league-filter");
 
-  if (filter === "ongoing") {
-    ongoingGroup?.classList.remove("hidden");
-    upcomingGroup?.classList.add("hidden");
-    endedGroup?.classList.add("hidden");
-    if (count) count.textContent = `${ongoingCount} live`;
-  } else if (filter === "upcoming") {
-    ongoingGroup?.classList.add("hidden");
-    upcomingGroup?.classList.remove("hidden");
-    endedGroup?.classList.add("hidden");
-    if (count) count.textContent = `${upcomingCount} upcoming`;
-  } else if (filter === "ended") {
-    ongoingGroup?.classList.add("hidden");
-    upcomingGroup?.classList.add("hidden");
-    endedGroup?.classList.remove("hidden");
-    if (count) count.textContent = `${endedCount} ended`;
-  } else {
-    ongoingGroup?.classList.remove("hidden");
-    upcomingGroup?.classList.remove("hidden");
-    endedGroup?.classList.remove("hidden");
-    if (count) {
-      const total = ongoingCount + upcomingCount + endedCount;
-      count.textContent = `${total} fixture${total === 1 ? "" : "s"}`;
+  const selectedType = typeSelect ? typeSelect.value : "all";
+  const selectedLeague = leagueSelect ? leagueSelect.value : "all";
+
+  const groups = [
+    {
+      key: "ongoing",
+      element: ongoingGroup,
+      countEl: document.querySelector("#ongoing-count"),
+      emptyEl: document.querySelector("#ongoing-empty"),
+      suffix: "live",
+      defaultEmptyText: "No matches currently ongoing.",
+    },
+    {
+      key: "upcoming",
+      element: upcomingGroup,
+      countEl: document.querySelector("#upcoming-count"),
+      emptyEl: document.querySelector("#upcoming-empty"),
+      suffix: "upcoming",
+      defaultEmptyText: "No upcoming fixtures scheduled.",
+    },
+    {
+      key: "ended",
+      element: endedGroup,
+      countEl: document.querySelector("#ended-count"),
+      emptyEl: document.querySelector("#ended-empty"),
+      suffix: "ended",
+      defaultEmptyText: "No ended matches for this period.",
+    },
+  ];
+
+  let totalVisible = 0;
+
+  for (const { key, element, countEl, emptyEl, suffix, defaultEmptyText } of groups) {
+    if (!element) continue;
+
+    const isGroupTypeVisible = selectedType === "all" || selectedType === key;
+    if (!isGroupTypeVisible) {
+      element.classList.add("hidden");
+      continue;
+    }
+
+    element.classList.remove("hidden");
+    const rows = element.querySelectorAll("tbody tr");
+    let visibleInGroup = 0;
+
+    rows.forEach((row) => {
+      const matchesLeague = selectedLeague === "all" || row.dataset.competition === selectedLeague;
+      if (matchesLeague) {
+        row.classList.remove("hidden");
+        visibleInGroup++;
+      } else {
+        row.classList.add("hidden");
+      }
+    });
+
+    if (countEl) countEl.textContent = `${visibleInGroup} ${suffix}`;
+
+    if (visibleInGroup === 0) {
+      if (emptyEl) {
+        emptyEl.textContent = selectedLeague === "all"
+          ? defaultEmptyText
+          : `No ${suffix} matches in ${selectedLeague}.`;
+        emptyEl.classList.remove("hidden");
+      }
+    } else {
+      emptyEl?.classList.add("hidden");
+    }
+
+    totalVisible += visibleInGroup;
+  }
+
+  if (count) {
+    if (selectedType === "all") {
+      count.textContent = `${totalVisible} fixture${totalVisible === 1 ? "" : "s"}`;
+    } else if (selectedType === "ongoing") {
+      count.textContent = `${totalVisible} live`;
+    } else if (selectedType === "upcoming") {
+      count.textContent = `${totalVisible} upcoming`;
+    } else if (selectedType === "ended") {
+      count.textContent = `${totalVisible} ended`;
     }
   }
 }
 
 function createMatchRow(match) {
   const row = document.createElement("tr");
+  row.dataset.competition = match.competition || "";
+  row.dataset.status = match.status || "";
   const matchCell = document.createElement("td");
   matchCell.className = "match-cell";
   const competition = document.createElement("span");
@@ -293,6 +371,7 @@ async function loadCurrentUser() {
 async function initDashboard() {
   document.querySelector("#refresh-button").addEventListener("click", loadMatches);
   document.querySelector("#match-type-filter")?.addEventListener("change", applyMatchFilter);
+  document.querySelector("#match-league-filter")?.addEventListener("change", applyMatchFilter);
   document.querySelector("#logout-button").addEventListener("click", async () => {
     try {
       await apiRequest("/auth/logout", { method: "POST" });

@@ -88,8 +88,8 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 .count-label { color: var(--muted); font: 11px var(--font-mono); }
 .trophy { color: var(--green); }
 .section-heading { margin-bottom: 16px; flex-wrap: wrap; }
-.matches-filter-controls { display: flex; align-items: center; gap: 10px; }
-.select-input { min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text); font: 12px var(--font-sans); cursor: pointer; outline: none; transition: border-color .15s; }
+.matches-filter-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.select-input { max-width: 180px; min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text); font: 12px var(--font-sans); cursor: pointer; outline: none; transition: border-color .15s; text-overflow: ellipsis; }
 .select-input:hover { border-color: #404044; }
 .select-input:focus { border-color: var(--green); }
 
