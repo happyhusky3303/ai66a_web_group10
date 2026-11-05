@@ -90,6 +90,17 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 .section-heading { margin-bottom: 16px; }
 
 .table-wrap { width: 100%; overflow-x: auto; }
+.match-group { margin-top: 26px; }
+.match-group:first-of-type { margin-top: 6px; }
+.group-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.group-title-wrap { display: flex; align-items: center; gap: 9px; }
+.group-heading h3 { margin: 0; font-size: 13px; font-weight: 650; letter-spacing: -.2px; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px #32d74b90; animation: live-pulse 2s infinite ease-in-out; }
+@keyframes live-pulse {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: .35; transform: scale(.8); }
+  100% { opacity: 1; transform: scale(1); }
+}
 .match-table { width: 100%; border-collapse: collapse; text-align: left; }
 .match-table th { padding: 11px 10px; color: var(--muted); font: 9px var(--font-mono); letter-spacing: .8px; white-space: nowrap; }
 .match-table td { padding: 13px 10px; border-top: 1px solid var(--border); vertical-align: middle; }

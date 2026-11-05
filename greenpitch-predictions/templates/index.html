@@ -48,11 +48,54 @@
             <div id="app-message" class="notice hidden" role="status" aria-live="polite"></div>
             <div id="matches-loading" class="loading-state">Loading match data…</div>
             <div id="matches-empty" class="empty-state hidden">No fixtures are available for this period.</div>
-            <div class="table-wrap">
-              <table class="match-table">
-                <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">PREDICT</th></tr></thead>
-                <tbody id="matches-body"></tbody>
-              </table>
+
+            <div class="match-group" id="ongoing-group">
+              <div class="group-heading">
+                <div class="group-title-wrap">
+                  <span class="live-dot" aria-hidden="true"></span>
+                  <h3>Ongoing Matches</h3>
+                </div>
+                <span id="ongoing-count" class="count-label">0 live</span>
+              </div>
+              <div id="ongoing-empty" class="empty-state hidden">No matches currently ongoing.</div>
+              <div class="table-wrap">
+                <table class="match-table">
+                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">SCORE</th></tr></thead>
+                  <tbody id="ongoing-matches-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="match-group" id="upcoming-group">
+              <div class="group-heading">
+                <div class="group-title-wrap">
+                  <h3>Upcoming Matches</h3>
+                </div>
+                <span id="upcoming-count" class="count-label">0 upcoming</span>
+              </div>
+              <div id="upcoming-empty" class="empty-state hidden">No upcoming fixtures scheduled.</div>
+              <div class="table-wrap">
+                <table class="match-table">
+                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">PREDICT</th></tr></thead>
+                  <tbody id="upcoming-matches-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="match-group" id="ended-group">
+              <div class="group-heading">
+                <div class="group-title-wrap">
+                  <h3>Ended Matches</h3>
+                </div>
+                <span id="ended-count" class="count-label">0 ended</span>
+              </div>
+              <div id="ended-empty" class="empty-state hidden">No ended matches for this period.</div>
+              <div class="table-wrap">
+                <table class="match-table">
+                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">FINAL SCORE</th></tr></thead>
+                  <tbody id="ended-matches-body"></tbody>
+                </table>
+              </div>
             </div>
           </section>
 

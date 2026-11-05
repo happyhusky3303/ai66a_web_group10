@@ -38,20 +38,66 @@ function hideNotice(element) {
 async function loadMatches() {
   const loading = document.querySelector("#matches-loading");
   const empty = document.querySelector("#matches-empty");
-  const body = document.querySelector("#matches-body");
   const count = document.querySelector("#match-count");
   const notice = document.querySelector("#app-message");
+
+  const ongoingBody = document.querySelector("#ongoing-matches-body");
+  const upcomingBody = document.querySelector("#upcoming-matches-body");
+  const endedBody = document.querySelector("#ended-matches-body");
+
+  const ongoingEmpty = document.querySelector("#ongoing-empty");
+  const upcomingEmpty = document.querySelector("#upcoming-empty");
+  const endedEmpty = document.querySelector("#ended-empty");
+
+  const ongoingCount = document.querySelector("#ongoing-count");
+  const upcomingCount = document.querySelector("#upcoming-count");
+  const endedCount = document.querySelector("#ended-count");
+
   loading.classList.remove("hidden");
   empty.classList.add("hidden");
-  body.replaceChildren();
+  ongoingBody?.replaceChildren();
+  upcomingBody?.replaceChildren();
+  endedBody?.replaceChildren();
   hideNotice(notice);
 
   try {
     const data = await apiRequest("/api/matches");
-    const matches = data.matches;
+    const matches = data.matches || [];
     count.textContent = `${matches.length} fixture${matches.length === 1 ? "" : "s"}`;
     if (matches.length === 0) empty.classList.remove("hidden");
-    for (const match of matches) body.append(createMatchRow(match));
+
+    const ongoing = [];
+    const upcoming = [];
+    const ended = [];
+
+    for (const match of matches) {
+      if (match.status === "Ongoing") {
+        ongoing.push(match);
+      } else if (match.status === "Before") {
+        upcoming.push(match);
+      } else {
+        ended.push(match);
+      }
+    }
+
+    // Ongoing group
+    if (ongoingCount) ongoingCount.textContent = `${ongoing.length} live`;
+    if (ongoing.length === 0) ongoingEmpty?.classList.remove("hidden");
+    else ongoingEmpty?.classList.add("hidden");
+    for (const match of ongoing) ongoingBody?.append(createMatchRow(match));
+
+    // Upcoming group
+    if (upcomingCount) upcomingCount.textContent = `${upcoming.length} upcoming`;
+    if (upcoming.length === 0) upcomingEmpty?.classList.remove("hidden");
+    else upcomingEmpty?.classList.add("hidden");
+    for (const match of upcoming) upcomingBody?.append(createMatchRow(match));
+
+    // Ended group
+    if (endedCount) endedCount.textContent = `${ended.length} ended`;
+    if (ended.length === 0) endedEmpty?.classList.remove("hidden");
+    else endedEmpty?.classList.add("hidden");
+    for (const match of ended) endedBody?.append(createMatchRow(match));
+
   } catch (error) {
     count.textContent = "Unavailable";
     showNotice(notice, error.message);
@@ -107,11 +153,16 @@ function createMatchRow(match) {
     link.className = "sign-in-prompt";
     link.textContent = "Sign in to predict";
     predictCell.append(link);
-  } else if (match.status === "Ended" && match.home_score !== null && match.away_score !== null) {
+  } else if (match.home_score !== null && match.away_score !== null) {
     const score = document.createElement("span");
     score.className = "mono score";
     score.textContent = `${match.home_score} — ${match.away_score}`;
     predictCell.append(score);
+  } else if (match.status === "Ongoing") {
+    const liveText = document.createElement("span");
+    liveText.className = "mono muted";
+    liveText.textContent = "Live";
+    predictCell.append(liveText);
   } else {
     predictCell.textContent = "—";
   }
