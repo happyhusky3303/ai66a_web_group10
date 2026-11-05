@@ -43,7 +43,15 @@
           <section class="card matches-card" aria-labelledby="matches-heading">
             <div class="section-heading">
               <div><p class="eyebrow">FIXTURES & RESULTS</p><h2 id="matches-heading">Matches</h2></div>
-              <span id="match-count" class="count-label">— fixtures</span>
+              <div class="matches-filter-controls">
+                <select id="match-type-filter" class="select-input" aria-label="Filter matches by type">
+                  <option value="all">All matches</option>
+                  <option value="ongoing">Ongoing matches</option>
+                  <option value="upcoming">Upcoming matches</option>
+                  <option value="ended">Ended matches</option>
+                </select>
+                <span id="match-count" class="count-label">— fixtures</span>
+              </div>
             </div>
             <div id="app-message" class="notice hidden" role="status" aria-live="polite"></div>
             <div id="matches-loading" class="loading-state">Loading match data…</div>

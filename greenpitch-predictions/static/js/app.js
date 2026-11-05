@@ -98,11 +98,50 @@ async function loadMatches() {
     else endedEmpty?.classList.add("hidden");
     for (const match of ended) endedBody?.append(createMatchRow(match));
 
+    applyMatchFilter();
   } catch (error) {
     count.textContent = "Unavailable";
     showNotice(notice, error.message);
   } finally {
     loading.classList.add("hidden");
+  }
+}
+
+function applyMatchFilter() {
+  const ongoingGroup = document.querySelector("#ongoing-group");
+  const upcomingGroup = document.querySelector("#upcoming-group");
+  const endedGroup = document.querySelector("#ended-group");
+  const count = document.querySelector("#match-count");
+  const select = document.querySelector("#match-type-filter");
+  const filter = select ? select.value : "all";
+
+  const ongoingCount = ongoingGroup?.querySelectorAll("tbody tr").length || 0;
+  const upcomingCount = upcomingGroup?.querySelectorAll("tbody tr").length || 0;
+  const endedCount = endedGroup?.querySelectorAll("tbody tr").length || 0;
+
+  if (filter === "ongoing") {
+    ongoingGroup?.classList.remove("hidden");
+    upcomingGroup?.classList.add("hidden");
+    endedGroup?.classList.add("hidden");
+    if (count) count.textContent = `${ongoingCount} live`;
+  } else if (filter === "upcoming") {
+    ongoingGroup?.classList.add("hidden");
+    upcomingGroup?.classList.remove("hidden");
+    endedGroup?.classList.add("hidden");
+    if (count) count.textContent = `${upcomingCount} upcoming`;
+  } else if (filter === "ended") {
+    ongoingGroup?.classList.add("hidden");
+    upcomingGroup?.classList.add("hidden");
+    endedGroup?.classList.remove("hidden");
+    if (count) count.textContent = `${endedCount} ended`;
+  } else {
+    ongoingGroup?.classList.remove("hidden");
+    upcomingGroup?.classList.remove("hidden");
+    endedGroup?.classList.remove("hidden");
+    if (count) {
+      const total = ongoingCount + upcomingCount + endedCount;
+      count.textContent = `${total} fixture${total === 1 ? "" : "s"}`;
+    }
   }
 }
 
@@ -253,6 +292,7 @@ async function loadCurrentUser() {
 
 async function initDashboard() {
   document.querySelector("#refresh-button").addEventListener("click", loadMatches);
+  document.querySelector("#match-type-filter")?.addEventListener("change", applyMatchFilter);
   document.querySelector("#logout-button").addEventListener("click", async () => {
     try {
       await apiRequest("/auth/logout", { method: "POST" });
