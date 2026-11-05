@@ -29,5 +29,9 @@ class Prediction(Base):
     predicted_winner: Mapped[str] = mapped_column(String(4), nullable=False)
     is_resolved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     won: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    competition: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    home_team: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    away_team: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    utc_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="predictions")

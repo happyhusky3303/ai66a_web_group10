@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#121212">
+    <title>My Matches — GreenPitch</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=3">
+    <script src="/static/js/app.js?v=3" defer></script>
+  </head>
+  <body data-page="my-matches">
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="GreenPitch home">
+          <span class="brand-mark" aria-hidden="true">G</span>
+          <span>GreenPitch<span class="brand-caption">MATCH INTELLIGENCE</span></span>
+        </a>
+        <nav class="top-nav" aria-label="Main navigation">
+          <a class="nav-link" href="/">Match Center</a>
+          <a class="nav-link active" href="/my-matches">My Matches</a>
+          <span class="live-indicator"><span></span> LIVE DATA</span>
+          <a id="auth-link" class="button button-quiet" href="/login">Sign in</a>
+          <button id="logout-button" class="button button-quiet hidden" type="button">Sign out</button>
+        </nav>
+      </header>
+
+      <main>
+        <section class="page-heading">
+          <div>
+            <p class="eyebrow">USER DASHBOARD / BET HISTORY</p>
+            <h1>My Matches</h1>
+            <p class="muted">Track all your active predictions, live progress, and earned points.</p>
+          </div>
+          <button id="my-refresh-button" class="button button-outline" type="button">Refresh</button>
+        </section>
+
+        <section class="dashboard-grid" aria-label="My matches dashboard">
+          <!-- Stats Card -->
+          <article class="card points-card">
+            <div class="card-topline">
+              <span class="eyebrow">YOUR PREDICTION RECORD</span>
+              <span class="status-chip">SEASON</span>
+            </div>
+            <div class="my-stats-grid">
+              <div class="stat-box">
+                <span class="stat-caption">TOTAL POINTS</span>
+                <p id="user-points" class="metric">—</p>
+                <p class="card-footnote">+100 correct · −100 incorrect</p>
+              </div>
+              <div class="stat-box">
+                <span class="stat-caption">TOTAL BETS</span>
+                <p id="stat-total" class="metric metric-dim">0</p>
+                <p class="card-footnote">Predictions placed</p>
+              </div>
+              <div class="stat-box">
+                <span class="stat-caption">INCOMING / ONGOING</span>
+                <p id="stat-active" class="metric metric-dim">0</p>
+                <p class="card-footnote">Awaiting final result</p>
+              </div>
+              <div class="stat-box">
+                <span class="stat-caption">RESOLVED (W / L)</span>
+                <p class="metric metric-dim"><span id="stat-won" class="text-green">0</span> / <span id="stat-lost" class="text-red">0</span></p>
+                <p class="card-footnote">Concluded matches</p>
+              </div>
+            </div>
+          </article>
+
+          <!-- Main Table Card -->
+          <section class="card full-width-card" aria-labelledby="my-matches-heading">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">YOUR PREDICTED FIXTURES</p>
+                <h2 id="my-matches-heading">Predicted Matches</h2>
+              </div>
+              <div class="matches-filter-controls">
+                <select id="my-matches-filter" class="select-input" aria-label="Filter my matches by status">
+                  <option value="all">All matches</option>
+                  <option value="incoming">Incoming</option>
+                  <option value="ongoing">Ongoing</option>
+                  <option value="ended">Ended</option>
+                </select>
+                <span id="my-matches-count" class="count-label">— predictions</span>
+              </div>
+            </div>
+
+            <div id="my-app-message" class="notice hidden" role="status" aria-live="polite"></div>
+            <div id="my-matches-loading" class="loading-state">Loading your predictions…</div>
+            <div id="my-auth-required" class="empty-state hidden">
+              <p>Please sign in to view your predictions and points.</p>
+              <a href="/login" class="button button-primary" style="display:inline-block; margin-top:10px;">Sign in</a>
+            </div>
+            <div id="my-matches-empty" class="empty-state hidden">
+              <p>You haven't placed any predictions yet.</p>
+              <a href="/" class="button button-primary" style="display:inline-block; margin-top:10px;">Browse Fixtures to Predict</a>
+            </div>
+            <div id="my-matches-filtered-empty" class="empty-state hidden">
+              No matches found for this filter.
+            </div>
+
+            <div class="table-wrap">
+              <table class="match-table" id="my-matches-table">
+                <thead>
+                  <tr>
+                    <th scope="col">MATCH</th>
+                    <th scope="col">KICK-OFF</th>
+                    <th scope="col">STATUS</th>
+                    <th scope="col">MY PREDICTION</th>
+                    <th scope="col">RESULT / SCORE</th>
+                    <th scope="col">POINTS</th>
+                  </tr>
+                </thead>
+                <tbody id="my-matches-body"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <span>GREENPITCH / FOOTBALL PREDICTIONS</span>
+        <span>POINTS ONLY · NO REAL-MONEY BETTING</span>
+      </footer>
+    </div>
+  </body>
+</html>
+

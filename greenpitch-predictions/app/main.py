@@ -27,9 +27,23 @@ if not session_secret:
     logger.warning("SESSION_SECRET_KEY is unset; sessions will expire when the app restarts.")
 
 
+from sqlalchemy import text
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        for col, col_type in [
+            ("competition", "VARCHAR(128)"),
+            ("home_team", "VARCHAR(128)"),
+            ("away_team", "VARCHAR(128)"),
+            ("utc_date", "VARCHAR(64)"),
+        ]:
+            try:
+                conn.execute(text(f"ALTER TABLE predictions ADD COLUMN {col} {col_type}"))
+                conn.commit()
+            except Exception:
+                pass
     yield
 
 
@@ -60,3 +74,8 @@ def home(request: Request) -> HTMLResponse:
 @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
 def login_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request=request, name="login.html")
+
+
+@app.get("/my-matches", response_class=HTMLResponse, include_in_schema=False)
+def my_matches_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request=request, name="my_matches.html")

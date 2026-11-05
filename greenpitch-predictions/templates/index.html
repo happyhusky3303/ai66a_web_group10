@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#121212">
     <title>GreenPitch — Football Predictions</title>
-    <link rel="stylesheet" href="/static/css/style.css">
-    <script src="/static/js/app.js" defer></script>
+    <link rel="stylesheet" href="/static/css/style.css?v=3">
+    <script src="/static/js/app.js?v=3" defer></script>
   </head>
   <body data-page="dashboard">
     <div class="shell">
@@ -16,6 +16,8 @@
           <span>GreenPitch<span class="brand-caption">MATCH INTELLIGENCE</span></span>
         </a>
         <nav class="top-nav" aria-label="Main navigation">
+          <a class="nav-link active" href="/">Match Center</a>
+          <a class="nav-link" href="/my-matches">My Matches</a>
           <span class="live-indicator"><span></span> LIVE DATA</span>
           <a id="auth-link" class="button button-quiet" href="/login">Sign in</a>
           <button id="logout-button" class="button button-quiet hidden" type="button">Sign out</button>
@@ -52,6 +54,16 @@
                 </select>
                 <select id="match-league-filter" class="select-input" aria-label="Filter matches by league">
                   <option value="all">All leagues</option>
+                  <option value="Bundesliga">Bundesliga</option>
+                  <option value="Campeonato Brasileiro Série A">Campeonato Brasileiro Série A</option>
+                  <option value="Championship">Championship</option>
+                  <option value="Eredivisie">Eredivisie</option>
+                  <option value="Ligue 1">Ligue 1</option>
+                  <option value="Premier League">Premier League</option>
+                  <option value="Primeira Liga">Primeira Liga</option>
+                  <option value="Primera Division">Primera Division</option>
+                  <option value="Serie A">Serie A</option>
+                  <option value="UEFA Champions League">UEFA Champions League</option>
                 </select>
                 <span id="match-count" class="count-label">— fixtures</span>
               </div>

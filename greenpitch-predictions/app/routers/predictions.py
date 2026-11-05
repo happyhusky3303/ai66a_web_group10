@@ -65,6 +65,10 @@ async def create_prediction(
         user_id=user.id,
         match_id=payload.match_id,
         predicted_winner=payload.predicted_winner,
+        competition=match.get("competition"),
+        home_team=match.get("home_team"),
+        away_team=match.get("away_team"),
+        utc_date=match.get("utc_date"),
     )
     db.add(prediction)
     try:
@@ -78,6 +82,97 @@ async def create_prediction(
         "match_id": prediction.match_id,
         "predicted_winner": prediction.predicted_winner,
         "is_resolved": prediction.is_resolved,
+    }
+
+
+@router.get("/api/my-matches")
+@limiter.limit("30/minute")
+async def get_my_matches(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    predictions = db.scalars(
+        select(Prediction)
+        .where(Prediction.user_id == user.id)
+        .order_by(Prediction.id.desc())
+    ).all()
+
+    matches = await _fetch_matches()
+    matches_by_id = {str(m["id"]): m for m in matches}
+
+    results = []
+    points_changed = False
+
+    for pred in predictions:
+        match = matches_by_id.get(str(pred.match_id))
+
+        status_val = match.get("status") if match else ("Ended" if pred.is_resolved else "Unavailable")
+        competition = (match.get("competition") if match else None) or pred.competition or "Football"
+        home_team = (match.get("home_team") if match else None) or pred.home_team or "Home Team"
+        away_team = (match.get("away_team") if match else None) or pred.away_team or "Away Team"
+        utc_date = (match.get("utc_date") if match else None) or pred.utc_date
+        home_score = match.get("home_score") if match else None
+        away_score = match.get("away_score") if match else None
+        actual_winner = match.get("winner") if match else None
+
+        # Backfill metadata if missing
+        if not pred.competition and match:
+            pred.competition = match.get("competition")
+            pred.home_team = match.get("home_team")
+            pred.away_team = match.get("away_team")
+            pred.utc_date = match.get("utc_date")
+            points_changed = True
+
+        # Auto-resolve concluded matches with official winner
+        if status_val == "Ended" and actual_winner and not pred.is_resolved:
+            pred.won = (pred.predicted_winner == actual_winner)
+            pred.is_resolved = True
+            user.points += 100 if pred.won else -100
+            points_changed = True
+
+        if pred.is_resolved:
+            points_awarded = 100 if pred.won else -100
+        elif status_val == "Ended" and actual_winner:
+            points_awarded = 100 if pred.predicted_winner == actual_winner else -100
+        else:
+            points_awarded = None
+
+        if pred.predicted_winner == "home":
+            predicted_label = "H"
+            predicted_team = home_team
+        elif pred.predicted_winner == "away":
+            predicted_label = "A"
+            predicted_team = away_team
+        else:
+            predicted_label = "D"
+            predicted_team = "Draw"
+
+        results.append({
+            "id": pred.id,
+            "match_id": pred.match_id,
+            "predicted_winner": pred.predicted_winner,
+            "predicted_label": predicted_label,
+            "predicted_team": predicted_team,
+            "is_resolved": pred.is_resolved,
+            "won": pred.won if pred.is_resolved else (pred.predicted_winner == actual_winner if (status_val == "Ended" and actual_winner) else None),
+            "points_awarded": points_awarded,
+            "status": status_val,
+            "competition": competition,
+            "home_team": home_team,
+            "away_team": away_team,
+            "utc_date": utc_date,
+            "home_score": home_score,
+            "away_score": away_score,
+            "actual_winner": actual_winner,
+        })
+
+    if points_changed:
+        db.commit()
+
+    return {
+        "predictions": results,
+        "user_points": user.points,
     }
 
 

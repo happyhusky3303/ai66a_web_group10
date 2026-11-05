@@ -66,6 +66,8 @@ async function loadMatches() {
     count.textContent = `${matches.length} fixture${matches.length === 1 ? "" : "s"}`;
     if (matches.length === 0) empty.classList.remove("hidden");
 
+    populateLeagues(matches);
+
     const ongoing = [];
     const upcoming = [];
     const ended = [];
@@ -98,33 +100,35 @@ async function loadMatches() {
     else endedEmpty?.classList.add("hidden");
     for (const match of ended) endedBody?.append(createMatchRow(match));
 
-    // Populate leagues dropdown
-    const leagueSelect = document.querySelector("#match-league-filter");
-    if (leagueSelect) {
-      const currentSelection = leagueSelect.value;
-      const leagues = Array.from(new Set(matches.map((m) => m.competition).filter(Boolean))).sort();
-      leagueSelect.replaceChildren();
-      const allOption = document.createElement("option");
-      allOption.value = "all";
-      allOption.textContent = "All leagues";
-      leagueSelect.append(allOption);
-      for (const league of leagues) {
-        const option = document.createElement("option");
-        option.value = league;
-        option.textContent = league;
-        leagueSelect.append(option);
-      }
-      if (leagues.includes(currentSelection)) {
-        leagueSelect.value = currentSelection;
-      }
-    }
-
     applyMatchFilter();
   } catch (error) {
     count.textContent = "Unavailable";
     showNotice(notice, error.message);
   } finally {
     loading.classList.add("hidden");
+  }
+}
+
+function populateLeagues(matches) {
+  const leagueSelect = document.querySelector("#match-league-filter");
+  if (!leagueSelect) return;
+  const currentSelection = leagueSelect.value;
+  const leagues = Array.from(new Set(matches.map((m) => m.competition).filter(Boolean))).sort();
+  if (leagues.length === 0) return;
+
+  leagueSelect.replaceChildren();
+  const allOption = document.createElement("option");
+  allOption.value = "all";
+  allOption.textContent = "All leagues";
+  leagueSelect.append(allOption);
+  for (const league of leagues) {
+    const option = document.createElement("option");
+    option.value = league;
+    option.textContent = league;
+    leagueSelect.append(option);
+  }
+  if (currentSelection && (currentSelection === "all" || leagues.includes(currentSelection))) {
+    leagueSelect.value = currentSelection;
   }
 }
 
@@ -426,7 +430,245 @@ function initAuthPage() {
   });
 }
 
+let myPredictionsData = [];
+
+async function initMyMatches() {
+  document.querySelector("#my-refresh-button")?.addEventListener("click", loadMyMatches);
+  document.querySelector("#my-matches-filter")?.addEventListener("change", applyMyMatchesFilter);
+  document.querySelector("#logout-button")?.addEventListener("click", async () => {
+    try {
+      await apiRequest("/auth/logout", { method: "POST" });
+      window.location.assign("/");
+    } catch (error) {
+      showNotice(document.querySelector("#my-app-message"), error.message);
+    }
+  });
+
+  await loadCurrentUser();
+  await loadMyMatches();
+}
+
+async function loadMyMatches() {
+  const loading = document.querySelector("#my-matches-loading");
+  const authRequired = document.querySelector("#my-auth-required");
+  const empty = document.querySelector("#my-matches-empty");
+  const filteredEmpty = document.querySelector("#my-matches-filtered-empty");
+  const table = document.querySelector("#my-matches-table");
+  const body = document.querySelector("#my-matches-body");
+  const count = document.querySelector("#my-matches-count");
+  const notice = document.querySelector("#my-app-message");
+
+  const statTotal = document.querySelector("#stat-total");
+  const statActive = document.querySelector("#stat-active");
+  const statWon = document.querySelector("#stat-won");
+  const statLost = document.querySelector("#stat-lost");
+  const userPointsEl = document.querySelector("#user-points");
+
+  loading?.classList.remove("hidden");
+  authRequired?.classList.add("hidden");
+  empty?.classList.add("hidden");
+  filteredEmpty?.classList.add("hidden");
+  body?.replaceChildren();
+  hideNotice(notice);
+
+  if (!currentUser) {
+    loading?.classList.add("hidden");
+    authRequired?.classList.remove("hidden");
+    table?.classList.add("hidden");
+    if (count) count.textContent = "Sign in required";
+    return;
+  }
+
+  table?.classList.remove("hidden");
+
+  try {
+    const data = await apiRequest("/api/my-matches");
+    myPredictionsData = data.predictions || [];
+
+    if (userPointsEl && data.user_points !== undefined) {
+      userPointsEl.textContent = formatPoints(data.user_points);
+    }
+
+    let incomingCount = 0;
+    let ongoingCount = 0;
+    let wonCount = 0;
+    let lostCount = 0;
+
+    for (const p of myPredictionsData) {
+      if (p.status === "Before") incomingCount++;
+      else if (p.status === "Ongoing") ongoingCount++;
+      else if (p.won === true) wonCount++;
+      else if (p.won === false) lostCount++;
+    }
+
+    if (statTotal) statTotal.textContent = String(myPredictionsData.length);
+    if (statActive) statActive.textContent = String(incomingCount + ongoingCount);
+    if (statWon) statWon.textContent = String(wonCount);
+    if (statLost) statLost.textContent = String(lostCount);
+
+    if (myPredictionsData.length === 0) {
+      empty?.classList.remove("hidden");
+      table?.classList.add("hidden");
+      if (count) count.textContent = "0 predictions";
+      return;
+    }
+
+    applyMyMatchesFilter();
+  } catch (error) {
+    if (count) count.textContent = "Unavailable";
+    showNotice(notice, error.message);
+  } finally {
+    loading?.classList.add("hidden");
+  }
+}
+
+function applyMyMatchesFilter() {
+  const filterSelect = document.querySelector("#my-matches-filter");
+  const selected = filterSelect ? filterSelect.value : "all";
+  const body = document.querySelector("#my-matches-body");
+  const filteredEmpty = document.querySelector("#my-matches-filtered-empty");
+  const count = document.querySelector("#my-matches-count");
+  const table = document.querySelector("#my-matches-table");
+
+  body?.replaceChildren();
+
+  const filtered = myPredictionsData.filter((item) => {
+    if (selected === "incoming") return item.status === "Before";
+    if (selected === "ongoing") return item.status === "Ongoing";
+    if (selected === "ended") return item.status === "Ended" || item.status === "Unavailable";
+    return true; // "all"
+  });
+
+  if (count) {
+    count.textContent = `${filtered.length} prediction${filtered.length === 1 ? "" : "s"}`;
+  }
+
+  if (filtered.length === 0) {
+    filteredEmpty?.classList.remove("hidden");
+    table?.classList.add("hidden");
+  } else {
+    filteredEmpty?.classList.add("hidden");
+    table?.classList.remove("hidden");
+    for (const item of filtered) {
+      body?.append(createMyMatchRow(item));
+    }
+  }
+}
+
+function createMyMatchRow(item) {
+  const row = document.createElement("tr");
+
+  // Col 1: Match
+  const matchCell = document.createElement("td");
+  matchCell.className = "match-cell";
+  const competition = document.createElement("span");
+  competition.className = "competition-name";
+  competition.textContent = item.competition;
+  const teams = document.createElement("strong");
+  teams.className = "team-pair";
+  teams.textContent = `${item.home_team}  —  ${item.away_team}`;
+  matchCell.append(competition, teams);
+
+  // Col 2: Kick-off
+  const dateCell = document.createElement("td");
+  dateCell.className = "mono date-cell";
+  dateCell.textContent = item.utc_date
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.utc_date))
+    : "—";
+
+  // Col 3: Status
+  const statusCell = document.createElement("td");
+  const statusSpan = document.createElement("span");
+  let displayStatus = item.status;
+  let statusClass = "unavailable";
+  if (item.status === "Before") {
+    displayStatus = "Incoming";
+    statusClass = "before";
+  } else if (item.status === "Ongoing") {
+    displayStatus = "Ongoing";
+    statusClass = "ongoing";
+  } else if (item.status === "Ended") {
+    displayStatus = "Ended";
+    statusClass = "ended";
+  }
+  statusSpan.className = `status status-${statusClass}`;
+  statusSpan.textContent = displayStatus;
+  statusCell.append(statusSpan);
+
+  // Col 4: My Prediction
+  const predCell = document.createElement("td");
+  predCell.className = "prediction-cell";
+  const badge = document.createElement("span");
+  badge.className = "prediction-badge";
+  const labelStrong = document.createElement("strong");
+  labelStrong.textContent = item.predicted_label;
+  const teamText = document.createElement("span");
+  teamText.textContent = item.predicted_team;
+  badge.append(labelStrong, teamText);
+  predCell.append(badge);
+
+  // Col 5: Result / Score
+  const resultCell = document.createElement("td");
+  resultCell.className = "result-cell";
+  if (item.status === "Before") {
+    const kickSoon = document.createElement("span");
+    kickSoon.className = "mono muted";
+    kickSoon.textContent = "Kick-off pending";
+    resultCell.append(kickSoon);
+  } else if (item.status === "Ongoing") {
+    const liveWrap = document.createElement("div");
+    liveWrap.className = "live-score-wrap";
+    const scoreSpan = document.createElement("strong");
+    scoreSpan.className = "mono score";
+    scoreSpan.textContent = (item.home_score !== null && item.away_score !== null)
+      ? `${item.home_score} — ${item.away_score}`
+      : "Live";
+    const dot = document.createElement("span");
+    dot.className = "live-dot";
+    liveWrap.append(scoreSpan, dot);
+    resultCell.append(liveWrap);
+  } else if (item.status === "Ended") {
+    const scoreSpan = document.createElement("strong");
+    scoreSpan.className = "mono score";
+    scoreSpan.textContent = (item.home_score !== null && item.away_score !== null)
+      ? `${item.home_score} — ${item.away_score}`
+      : "Concluded";
+    resultCell.append(scoreSpan);
+  } else {
+    resultCell.textContent = "—";
+  }
+
+  // Col 6: Points Received / Lost
+  const pointsCell = document.createElement("td");
+  pointsCell.className = "points-cell";
+  if (item.status === "Before" || item.status === "Ongoing") {
+    const pendingSpan = document.createElement("span");
+    pendingSpan.className = "mono muted";
+    pendingSpan.textContent = "—";
+    pointsCell.append(pendingSpan);
+  } else if (item.points_awarded !== null) {
+    const pointsPill = document.createElement("span");
+    if (item.points_awarded > 0) {
+      pointsPill.className = "points-pill points-pill-won mono";
+      pointsPill.textContent = `+${item.points_awarded} pts`;
+    } else if (item.points_awarded < 0) {
+      pointsPill.className = "points-pill points-pill-lost mono";
+      pointsPill.textContent = `${item.points_awarded} pts`;
+    } else {
+      pointsPill.className = "points-pill points-pill-pending mono";
+      pointsPill.textContent = "0 pts";
+    }
+    pointsCell.append(pointsPill);
+  } else {
+    pointsCell.textContent = "—";
+  }
+
+  row.append(matchCell, dateCell, statusCell, predCell, resultCell, pointsCell);
+  return row;
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   if (document.body.dataset.page === "dashboard") initDashboard();
+  if (document.body.dataset.page === "my-matches") initMyMatches();
   if (document.body.dataset.page === "auth") initAuthPage();
 });
