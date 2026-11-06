@@ -20,6 +20,18 @@ py -m venv .venv
 python -m pip install -r requirements.txt
 ```
 
+## Run tests
+
+Install the development dependencies and run the test suite:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Tests use a temporary SQLite database and mock football-data.org responses, so
+they do not require a provider API token, PostgreSQL, or network access.
+
 Set the environment variables and start the development server:
 
 ```powershell
