@@ -31,6 +31,8 @@ class Prediction(Base):
     competition: Mapped[str | None] = mapped_column(String(128), nullable=True)
     home_team: Mapped[str | None] = mapped_column(String(128), nullable=True)
     away_team: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    home_crest: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    away_crest: Mapped[str | None] = mapped_column(String(512), nullable=True)
     utc_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="predictions")

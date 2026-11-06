@@ -55,6 +55,8 @@ def _normalize_match(match: dict[str, Any]) -> dict[str, Any]:
         "status": match_status,
         "home_team": (match.get("homeTeam") or {}).get("name", "Home"),
         "away_team": (match.get("awayTeam") or {}).get("name", "Away"),
+        "home_crest": (match.get("homeTeam") or {}).get("crest"),
+        "away_crest": (match.get("awayTeam") or {}).get("crest"),
         "home_score": full_time.get("home"),
         "away_score": full_time.get("away"),
         "winner": actual_winner,

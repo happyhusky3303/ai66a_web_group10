@@ -69,6 +69,8 @@ async def create_prediction(
         competition=match.get("competition"),
         home_team=match.get("home_team"),
         away_team=match.get("away_team"),
+        home_crest=match.get("home_crest"),
+        away_crest=match.get("away_crest"),
         utc_date=match.get("utc_date"),
     )
     db.add(prediction)
@@ -117,14 +119,30 @@ async def get_my_matches(
         home_score = match.get("home_score") if match else None
         away_score = match.get("away_score") if match else None
         actual_winner = match.get("winner") if match else None
+        provider_data = match.get("provider_data", {}) if match else {}
+        home_crest = (provider_data.get("homeTeam") or {}).get("crest") or pred.home_crest
+        away_crest = (provider_data.get("awayTeam") or {}).get("crest") or pred.away_crest
 
         # Backfill metadata if missing
-        if not pred.competition and match:
-            pred.competition = match.get("competition")
-            pred.home_team = match.get("home_team")
-            pred.away_team = match.get("away_team")
-            pred.utc_date = match.get("utc_date")
-            points_changed = True
+        if match:
+            if not pred.competition:
+                pred.competition = match.get("competition")
+                points_changed = True
+            if not pred.home_team:
+                pred.home_team = match.get("home_team")
+                points_changed = True
+            if not pred.away_team:
+                pred.away_team = match.get("away_team")
+                points_changed = True
+            if not pred.home_crest:
+                pred.home_crest = home_crest
+                points_changed = points_changed or home_crest is not None
+            if not pred.away_crest:
+                pred.away_crest = away_crest
+                points_changed = points_changed or away_crest is not None
+            if not pred.utc_date:
+                pred.utc_date = match.get("utc_date")
+                points_changed = points_changed or match.get("utc_date") is not None
 
         # Auto-resolve concluded matches with official winner
         if status_val == "Ended" and actual_winner and not pred.is_resolved:
@@ -163,6 +181,8 @@ async def get_my_matches(
             "competition": competition,
             "home_team": home_team,
             "away_team": away_team,
+            "home_crest": home_crest,
+            "away_crest": away_crest,
             "utc_date": utc_date,
             "home_score": home_score,
             "away_score": away_score,

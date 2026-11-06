@@ -29,23 +29,26 @@ if not session_secret:
     logger.warning("SESSION_SECRET_KEY is unset; sessions will expire when the app restarts.")
 
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     Base.metadata.create_all(bind=engine)
-    with engine.connect() as conn:
+    with engine.begin() as conn:
+        existing_columns = {
+            column["name"] for column in inspect(conn).get_columns("predictions")
+        }
         for col, col_type in [
             ("competition", "VARCHAR(128)"),
             ("home_team", "VARCHAR(128)"),
             ("away_team", "VARCHAR(128)"),
+            ("home_crest", "VARCHAR(512)"),
+            ("away_crest", "VARCHAR(512)"),
             ("utc_date", "VARCHAR(64)"),
         ]:
-            try:
+            if col not in existing_columns:
                 conn.execute(text(f"ALTER TABLE predictions ADD COLUMN {col} {col_type}"))
-                conn.commit()
-            except Exception:
-                pass
+                existing_columns.add(col)
     yield
 
 

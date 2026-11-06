@@ -273,6 +273,64 @@ function applyMatchFilter() {
   }
 }
 
+function getTeamInitials(teamName) {
+  return teamName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
+}
+
+function createTeamBadge(teamName, crest, side) {
+  const team = document.createElement("span");
+  team.className = `team-badge team-badge-${side}`;
+
+  const name = document.createElement("span");
+  name.className = "team-name";
+  name.textContent = teamName || "Team";
+
+  const logo = crest ? document.createElement("img") : document.createElement("span");
+  logo.className = "team-logo";
+  if (crest) {
+    logo.src = crest;
+    logo.alt = "";
+    logo.loading = "lazy";
+    logo.addEventListener("error", () => {
+      const fallback = document.createElement("span");
+      fallback.className = "team-logo team-logo-fallback";
+      fallback.textContent = getTeamInitials(teamName || "Team");
+      logo.replaceWith(fallback);
+    }, { once: true });
+  } else {
+    logo.classList.add("team-logo-fallback");
+    logo.textContent = getTeamInitials(teamName || "Team");
+    logo.setAttribute("aria-hidden", "true");
+  }
+
+  if (side === "home") team.append(name, logo);
+  else team.append(logo, name);
+  return team;
+}
+
+function createTeamPair(homeName, homeCrest, awayName, awayCrest) {
+  const pair = document.createElement("div");
+  pair.className = "team-pair";
+  pair.setAttribute("aria-label", `${homeName} versus ${awayName}`);
+
+  const separator = document.createElement("span");
+  separator.className = "team-versus";
+  separator.textContent = "vs";
+
+  pair.append(
+    createTeamBadge(homeName, homeCrest, "home"),
+    separator,
+    createTeamBadge(awayName, awayCrest, "away"),
+  );
+  return pair;
+}
+
 function createMatchRow(match) {
   const row = document.createElement("tr");
   row.dataset.competition = match.competition || "";
@@ -282,9 +340,12 @@ function createMatchRow(match) {
   const competition = document.createElement("span");
   competition.className = "competition-name";
   competition.textContent = match.competition;
-  const teams = document.createElement("strong");
-  teams.className = "team-pair";
-  teams.textContent = `${match.home_team}  —  ${match.away_team}`;
+  const teams = createTeamPair(
+    match.home_team,
+    match.home_crest,
+    match.away_team,
+    match.away_crest,
+  );
   matchCell.append(competition, teams);
 
   const dateCell = document.createElement("td");
@@ -539,9 +600,13 @@ function renderHomeAnalytics(data) {
     const row = document.createElement("a");
     row.className = "recent-prediction";
     row.href = `/match/${encodeURIComponent(item.match_id)}`;
-    const matchup = document.createElement("span");
-    matchup.className = "recent-matchup";
-    matchup.textContent = `${item.home_team} — ${item.away_team}`;
+    const matchup = createTeamPair(
+      item.home_team,
+      item.home_crest,
+      item.away_team,
+      item.away_crest,
+    );
+    matchup.classList.add("recent-matchup");
     const detail = document.createElement("span");
     detail.className = "recent-detail";
     detail.textContent = `${item.predicted_label} pick · ${item.status}`;
@@ -870,9 +935,12 @@ function createMyMatchRow(item) {
   const competition = document.createElement("span");
   competition.className = "competition-name";
   competition.textContent = item.competition;
-  const teams = document.createElement("strong");
-  teams.className = "team-pair";
-  teams.textContent = `${item.home_team}  —  ${item.away_team}`;
+  const teams = createTeamPair(
+    item.home_team,
+    item.home_crest,
+    item.away_team,
+    item.away_crest,
+  );
   matchCell.append(competition, teams);
 
   // Col 2: Kick-off
