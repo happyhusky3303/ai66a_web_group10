@@ -4,11 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#121212">
-    <title>GreenPitch — Football Predictions</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=3">
-    <script src="/static/js/app.js?v=3" defer></script>
+    <title>Home — GreenPitch</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=5">
+    <script src="/static/js/app.js?v=5" defer></script>
   </head>
-  <body data-page="dashboard">
+  <body data-page="home">
     <div class="shell">
       <header class="topbar">
         <a class="brand" href="/" aria-label="GreenPitch home">
@@ -16,7 +16,8 @@
           <span>GreenPitch<span class="brand-caption">MATCH INTELLIGENCE</span></span>
         </a>
         <nav class="top-nav" aria-label="Main navigation">
-          <a class="nav-link active" href="/">Match Center</a>
+          <a class="nav-link active" href="/">Home</a>
+          <a class="nav-link" href="/match-center">Match Center</a>
           <a class="nav-link" href="/my-matches">My Matches</a>
           <span class="live-indicator"><span></span> LIVE DATA</span>
           <a id="auth-link" class="button button-quiet" href="/login">Sign in</a>
@@ -27,111 +28,89 @@
       <main>
         <section class="page-heading">
           <div>
-            <p class="eyebrow">OVERVIEW / MATCH CENTER</p>
-            <h1>Match center</h1>
-            <p class="muted">Make your call before kick-off. Track every result on the global leaderboard.</p>
+            <p class="eyebrow">OVERVIEW / PERFORMANCE</p>
+            <h1>Welcome back<span id="home-username"></span></h1>
+            <p class="muted">Your prediction performance at a glance.</p>
           </div>
-          <button id="refresh-button" class="button button-outline" type="button">Refresh matches</button>
+          <a class="button button-primary" href="/match-center">Explore matches</a>
         </section>
 
-        <section class="dashboard-grid" aria-label="Prediction dashboard">
-          <article class="card points-card">
-            <div class="card-topline"><span class="eyebrow">YOUR TOTAL POINTS</span><span class="status-chip">SEASON</span></div>
-            <p id="user-name" class="muted account-label">Sign in to track your score</p>
-            <p id="user-points" class="metric">—</p>
-            <p class="card-footnote">Start at 1,000 points · +100 correct · −100 incorrect</p>
-          </article>
+        <div id="home-app-message" class="notice hidden" role="status" aria-live="polite"></div>
+        <div id="home-loading" class="loading-state">Loading your dashboard…</div>
+        <section id="home-auth-required" class="card empty-state hidden">
+          <p>Sign in to see your personal performance dashboard.</p>
+          <a href="/login" class="button button-primary">Sign in</a>
+        </section>
 
-          <section class="card matches-card" aria-labelledby="matches-heading">
-            <div class="section-heading">
-              <div><p class="eyebrow">FIXTURES & RESULTS</p><h2 id="matches-heading">Matches</h2></div>
-              <div class="matches-filter-controls">
-                <select id="match-type-filter" class="select-input" aria-label="Filter matches by type">
-                  <option value="all">All matches</option>
-                  <option value="ongoing">Ongoing</option>
-                  <option value="upcoming">Upcoming</option>
-                  <option value="ended">Ended</option>
-                </select>
-                <select id="match-league-filter" class="select-input" aria-label="Filter matches by league">
-                  <option value="all">All leagues</option>
-                  <option value="Bundesliga">Bundesliga</option>
-                  <option value="Campeonato Brasileiro Série A">Campeonato Brasileiro Série A</option>
-                  <option value="Championship">Championship</option>
-                  <option value="Eredivisie">Eredivisie</option>
-                  <option value="Ligue 1">Ligue 1</option>
-                  <option value="Premier League">Premier League</option>
-                  <option value="Primeira Liga">Primeira Liga</option>
-                  <option value="Primera Division">Primera Division</option>
-                  <option value="Serie A">Serie A</option>
-                  <option value="UEFA Champions League">UEFA Champions League</option>
-                </select>
-                <span id="match-count" class="count-label">— fixtures</span>
-              </div>
-            </div>
-            <div id="app-message" class="notice hidden" role="status" aria-live="polite"></div>
-            <div id="matches-loading" class="loading-state">Loading match data…</div>
-            <div id="matches-empty" class="empty-state hidden">No fixtures are available for this period.</div>
-
-            <div class="match-group" id="ongoing-group">
-              <div class="group-heading">
-                <div class="group-title-wrap">
-                  <span class="live-dot" aria-hidden="true"></span>
-                  <h3>Ongoing Matches</h3>
-                </div>
-                <span id="ongoing-count" class="count-label">0 live</span>
-              </div>
-              <div id="ongoing-empty" class="empty-state hidden">No matches currently ongoing.</div>
-              <div class="table-wrap">
-                <table class="match-table">
-                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">SCORE</th></tr></thead>
-                  <tbody id="ongoing-matches-body"></tbody>
-                </table>
-              </div>
-            </div>
-
-            <div class="match-group" id="upcoming-group">
-              <div class="group-heading">
-                <div class="group-title-wrap">
-                  <h3>Upcoming Matches</h3>
-                </div>
-                <span id="upcoming-count" class="count-label">0 upcoming</span>
-              </div>
-              <div id="upcoming-empty" class="empty-state hidden">No upcoming fixtures scheduled.</div>
-              <div class="table-wrap">
-                <table class="match-table">
-                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">PREDICT</th></tr></thead>
-                  <tbody id="upcoming-matches-body"></tbody>
-                </table>
-              </div>
-            </div>
-
-            <div class="match-group" id="ended-group">
-              <div class="group-heading">
-                <div class="group-title-wrap">
-                  <h3>Ended Matches</h3>
-                </div>
-                <span id="ended-count" class="count-label">0 ended</span>
-              </div>
-              <div id="ended-empty" class="empty-state hidden">No ended matches for this period.</div>
-              <div class="table-wrap">
-                <table class="match-table">
-                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">FINAL SCORE</th></tr></thead>
-                  <tbody id="ended-matches-body"></tbody>
-                </table>
-              </div>
-            </div>
+        <div id="home-dashboard" class="home-dashboard hidden">
+          <section class="kpi-grid" aria-label="Prediction key metrics">
+            <article class="card kpi-card kpi-highlight">
+              <span class="stat-caption">CURRENT POINTS</span>
+              <strong id="kpi-points" class="kpi-value">—</strong>
+              <span class="kpi-footnote">Available season balance</span>
+            </article>
+            <article class="card kpi-card">
+              <span class="stat-caption">POINTS RECEIVED</span>
+              <strong id="kpi-earned" class="kpi-value text-green">—</strong>
+              <span class="kpi-footnote">From correct predictions</span>
+            </article>
+            <article class="card kpi-card">
+              <span class="stat-caption">POINTS LOST</span>
+              <strong id="kpi-lost-points" class="kpi-value text-red">—</strong>
+              <span class="kpi-footnote">From incorrect predictions</span>
+            </article>
+            <article class="card kpi-card">
+              <span class="stat-caption">ACCURACY</span>
+              <strong id="kpi-accuracy" class="kpi-value">—</strong>
+              <span id="kpi-resolved" class="kpi-footnote">Resolved predictions</span>
+            </article>
+            <article class="card kpi-card">
+              <span class="stat-caption">PREDICTIONS</span>
+              <strong id="kpi-total" class="kpi-value">—</strong>
+              <span class="kpi-footnote">All-time picks</span>
+            </article>
+            <article class="card kpi-card">
+              <span class="stat-caption">IN PROGRESS</span>
+              <strong id="kpi-active" class="kpi-value">—</strong>
+              <span class="kpi-footnote">Upcoming or live matches</span>
+            </article>
           </section>
 
-          <aside class="card leaderboard-card" aria-labelledby="leaderboard-heading">
-            <div class="section-heading">
-              <div><p class="eyebrow">GLOBAL RANKING</p><h2 id="leaderboard-heading">Leaderboard</h2></div>
-              <span class="trophy" aria-hidden="true">TOP 50</span>
-            </div>
-            <div id="leaderboard-loading" class="loading-state">Loading rankings…</div>
-            <ol id="leaderboard-list" class="leaderboard-list"></ol>
-            <p id="leaderboard-empty" class="empty-state hidden">Be the first to join the rankings.</p>
-          </aside>
-        </section>
+          <section class="analytics-grid" aria-label="Prediction analytics">
+            <article class="card analytics-card">
+              <div class="section-heading">
+                <div><p class="eyebrow">OUTCOME DISTRIBUTION</p><h2>Prediction results</h2></div>
+              </div>
+              <div id="outcome-chart" class="bar-chart" role="img" aria-label="Prediction result counts"></div>
+            </article>
+            <article class="card analytics-card">
+              <div class="section-heading">
+                <div><p class="eyebrow">PICK ACCURACY</p><h2>Performance by outcome</h2></div>
+              </div>
+              <div id="pick-accuracy-chart" class="accuracy-chart" role="img" aria-label="Accuracy by predicted outcome"></div>
+            </article>
+            <article class="card analytics-card confusion-card">
+              <div class="section-heading">
+                <div><p class="eyebrow">ACTUAL VS PREDICTED</p><h2>Confusion matrix</h2></div>
+              </div>
+              <p class="chart-caption">Rows are actual results; columns are your picks.</p>
+              <div class="table-wrap">
+                <table class="confusion-matrix">
+                  <thead><tr><th>ACTUAL / PICK</th><th>HOME</th><th>DRAW</th><th>AWAY</th></tr></thead>
+                  <tbody id="confusion-matrix-body"></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="card analytics-card recent-card">
+              <div class="section-heading">
+                <div><p class="eyebrow">LATEST ACTIVITY</p><h2>Recent predictions</h2></div>
+                <a class="text-button" href="/my-matches">View all</a>
+              </div>
+              <div id="recent-predictions" class="recent-predictions"></div>
+              <p id="recent-empty" class="empty-state hidden">Your predictions will appear here.</p>
+            </article>
+          </section>
+        </div>
       </main>
       <footer class="footer"><span>GREENPITCH / FOOTBALL PREDICTIONS</span><span>POINTS ONLY · NO REAL-MONEY BETTING</span></footer>
     </div>

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#121212">
+    <title>Match Details — GreenPitch</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=5">
+    <script src="/static/js/app.js?v=5" defer></script>
+  </head>
+  <body data-page="match-detail">
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="GreenPitch home">
+          <span class="brand-mark" aria-hidden="true">G</span>
+          <span>GreenPitch<span class="brand-caption">MATCH INTELLIGENCE</span></span>
+        </a>
+        <nav class="top-nav" aria-label="Main navigation">
+          <a class="nav-link" href="/">Home</a>
+          <a class="nav-link active" href="/match-center">Match Center</a>
+          <a class="nav-link" href="/my-matches">My Matches</a>
+          <span class="live-indicator"><span></span> LIVE DATA</span>
+          <a id="auth-link" class="button button-quiet" href="/login">Sign in</a>
+          <button id="logout-button" class="button button-quiet hidden" type="button">Sign out</button>
+        </nav>
+      </header>
+
+      <main>
+        <section class="page-heading">
+          <div>
+            <p class="eyebrow"><a class="back-link" href="/match-center">MATCH CENTER</a> / FIXTURE DETAILS</p>
+            <h1 id="detail-title">Match details</h1>
+            <p id="detail-subtitle" class="muted">Loading fixture information…</p>
+          </div>
+          <a class="button button-outline" href="/match-center">All matches</a>
+        </section>
+
+        <div id="detail-message" class="notice hidden" role="status" aria-live="polite"></div>
+        <div id="detail-loading" class="loading-state">Loading provider match data…</div>
+        <section id="detail-content" class="hidden">
+          <article class="card match-hero">
+            <div class="match-hero-meta">
+              <span id="detail-competition" class="eyebrow"></span>
+              <span id="detail-status" class="status"></span>
+            </div>
+            <div class="match-scoreboard">
+              <div class="match-side">
+                <img id="detail-home-crest" class="team-crest hidden" alt="">
+                <h2 id="detail-home-team">Home</h2>
+              </div>
+              <div class="score-center">
+                <strong id="detail-score" class="score-display">VS</strong>
+                <span id="detail-kickoff" class="muted"></span>
+              </div>
+              <div class="match-side">
+                <img id="detail-away-crest" class="team-crest hidden" alt="">
+                <h2 id="detail-away-team">Away</h2>
+              </div>
+            </div>
+            <div id="prediction-panel" class="prediction-panel">
+              <div>
+                <p class="eyebrow">MAKE YOUR CALL</p>
+                <h2>Who will win?</h2>
+                <p class="muted">Choose the match outcome. Correct picks earn 100 points.</p>
+              </div>
+              <span id="prediction-quota" class="prediction-quota hidden" role="status" aria-live="polite">
+                Predictions left: up to 10 · resets every minute · shared network
+              </span>
+              <div id="detail-prediction-choices" class="detail-prediction-choices"></div>
+            </div>
+            <div id="prediction-locked" class="prediction-locked hidden"></div>
+          </article>
+
+          <section class="detail-lower-grid">
+            <article class="card analytics-card">
+              <div class="section-heading">
+                <div><p class="eyebrow">MATCH INFORMATION</p><h2>Fixture data</h2></div>
+              </div>
+              <div id="match-data-fields" class="match-data-fields"></div>
+            </article>
+            <article class="card analytics-card raw-data-card">
+              <details>
+                <summary>View complete provider response</summary>
+                <pre id="provider-raw-data" class="provider-raw-data"></pre>
+              </details>
+            </article>
+          </section>
+        </section>
+      </main>
+      <footer class="footer"><span>GREENPITCH / FOOTBALL PREDICTIONS</span><span>POINTS ONLY · NO REAL-MONEY BETTING</span></footer>
+    </div>
+  </body>
+</html>

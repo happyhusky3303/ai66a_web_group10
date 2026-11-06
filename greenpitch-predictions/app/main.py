@@ -5,11 +5,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
+from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from slowapi.errors import RateLimitExceeded
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.database import Base, engine
@@ -49,10 +51,38 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="GreenPitch Predictions", lifespan=lifespan)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, lambda request, exc: JSONResponse(
-    status_code=429,
-    content={"detail": "Too many requests. Please try again later."},
-))
+
+
+def add_rate_limit_headers(request: Request, response: Response) -> Response:
+    current_limit = getattr(request.state, "view_rate_limit", None)
+    if current_limit is not None:
+        return request.app.state.limiter._inject_headers(response, current_limit)
+    return response
+
+
+def rate_limit_exceeded_handler(request: Request, _: RateLimitExceeded) -> Response:
+    detail = (
+        "No predictions available right now. Please wait for the counter to reset."
+        if request.url.path == "/api/predict"
+        else "Too many requests. Please try again later."
+    )
+    response = JSONResponse(
+        status_code=429,
+        content={"detail": detail},
+    )
+    return add_rate_limit_headers(request, response)
+
+
+async def limited_http_exception_handler(
+    request: Request,
+    exc: StarletteHTTPException,
+) -> Response:
+    response = await fastapi_http_exception_handler(request, exc)
+    return add_rate_limit_headers(request, response)
+
+
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+app.add_exception_handler(StarletteHTTPException, limited_http_exception_handler)
 app.add_middleware(
     SessionMiddleware,
     secret_key=session_secret,
@@ -69,6 +99,16 @@ app.include_router(predictions.router)
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def home(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request=request, name="index.html")
+
+
+@app.get("/match-center", response_class=HTMLResponse, include_in_schema=False)
+def match_center_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request=request, name="match_center.html")
+
+
+@app.get("/match/{match_id}", response_class=HTMLResponse, include_in_schema=False)
+def match_detail_page(request: Request, match_id: str) -> HTMLResponse:
+    return templates.TemplateResponse(request=request, name="match_detail.html")
 
 
 @app.get("/login", response_class=HTMLResponse, include_in_schema=False)

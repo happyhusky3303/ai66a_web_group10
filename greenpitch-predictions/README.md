@@ -85,8 +85,12 @@ For production behind HTTPS, set `SESSION_HTTPS_ONLY=true` in `.env`.
 
 ## API
 
+- `/` — personal analytics dashboard (sign-in required for account metrics)
+- `/match-center` — fixtures and results list
+- `/match/{match_id}` — match details and prediction choices
 - `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`
 - `GET /api/matches` — football-data.org fixtures, cached for 300 seconds
+- `GET /api/matches/{match_id}` — normalized fixture plus the complete provider response
 - `POST /api/predict` — authenticated user's `match_id` and `predicted_winner`
   (`home`, `away`, or `draw`); `user_id` is optional and must match the session
 - `GET /api/leaderboard`
@@ -103,4 +107,6 @@ header. Configure `FOOTBALL_DATA_API_KEY` before requesting matches.
 SlowAPI limits each client IP to 5 requests/minute for registration and login,
 10/minute for predictions, and 20/minute each for matches and leaderboard.
 The external football provider is additionally protected by a shared in-memory
-300-second response cache.
+300-second response cache. On Match Center, signed-in users see the available
+prediction requests and reset countdown; this request allowance is shared by
+visitors using the same IP address.

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#121212">
+    <title>Match Center — GreenPitch</title>
+    <link rel="stylesheet" href="/static/css/style.css?v=5">
+    <script src="/static/js/app.js?v=5" defer></script>
+  </head>
+  <body data-page="match-center">
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="GreenPitch home">
+          <span class="brand-mark" aria-hidden="true">G</span>
+          <span>GreenPitch<span class="brand-caption">MATCH INTELLIGENCE</span></span>
+        </a>
+        <nav class="top-nav" aria-label="Main navigation">
+          <a class="nav-link" href="/">Home</a>
+          <a class="nav-link active" href="/match-center">Match Center</a>
+          <a class="nav-link" href="/my-matches">My Matches</a>
+          <span class="live-indicator"><span></span> LIVE DATA</span>
+          <a id="auth-link" class="button button-quiet" href="/login">Sign in</a>
+          <button id="logout-button" class="button button-quiet hidden" type="button">Sign out</button>
+        </nav>
+      </header>
+
+      <main>
+        <section class="page-heading">
+          <div>
+            <p class="eyebrow">FIXTURES / MATCH CENTER</p>
+            <h1>Match center</h1>
+            <p class="muted">Browse fixtures, follow live scores, and open a match for details.</p>
+          </div>
+          <button id="refresh-button" class="button button-outline" type="button">Refresh matches</button>
+        </section>
+
+        <section class="dashboard-grid" aria-label="Match center">
+          <section class="card full-width-card matches-card" aria-labelledby="matches-heading">
+            <div class="section-heading">
+              <div><p class="eyebrow">FIXTURES & RESULTS</p><h2 id="matches-heading">Matches</h2></div>
+              <div class="matches-filter-controls">
+                <select id="match-type-filter" class="select-input" aria-label="Filter matches by type">
+                  <option value="all">All matches</option>
+                  <option value="ongoing">Ongoing</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="ended">Ended</option>
+                </select>
+                <select id="match-league-filter" class="select-input" aria-label="Filter matches by league">
+                  <option value="all">All leagues</option>
+                  <option value="Bundesliga">Bundesliga</option>
+                  <option value="Campeonato Brasileiro Série A">Campeonato Brasileiro Série A</option>
+                  <option value="Championship">Championship</option>
+                  <option value="Eredivisie">Eredivisie</option>
+                  <option value="Ligue 1">Ligue 1</option>
+                  <option value="Premier League">Premier League</option>
+                  <option value="Primeira Liga">Primeira Liga</option>
+                  <option value="Primera Division">Primera Division</option>
+                  <option value="Serie A">Serie A</option>
+                  <option value="UEFA Champions League">UEFA Champions League</option>
+                </select>
+                <span id="match-count" class="count-label">— fixtures</span>
+              </div>
+            </div>
+            <div id="app-message" class="notice hidden" role="status" aria-live="polite"></div>
+            <div id="matches-loading" class="loading-state">Loading match data…</div>
+            <div id="matches-empty" class="empty-state hidden">No fixtures are available for this period.</div>
+
+            <div class="match-group" id="ongoing-group">
+              <div class="group-heading">
+                <div class="group-title-wrap">
+                  <span class="live-dot" aria-hidden="true"></span>
+                  <h3>Ongoing Matches</h3>
+                </div>
+                <span id="ongoing-count" class="count-label">0 live</span>
+              </div>
+              <div id="ongoing-empty" class="empty-state hidden">No matches currently ongoing.</div>
+              <div class="table-wrap">
+                <table class="match-table">
+                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">DETAILS</th></tr></thead>
+                  <tbody id="ongoing-matches-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="match-group" id="upcoming-group">
+              <div class="group-heading">
+                <div class="group-title-wrap">
+                  <h3>Upcoming Matches</h3>
+                </div>
+                <span id="upcoming-count" class="count-label">0 upcoming</span>
+              </div>
+              <div id="upcoming-empty" class="empty-state hidden">No upcoming fixtures scheduled.</div>
+              <div class="table-wrap">
+                <table class="match-table">
+                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">DETAILS</th></tr></thead>
+                  <tbody id="upcoming-matches-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="match-group" id="ended-group">
+              <div class="group-heading">
+                <div class="group-title-wrap">
+                  <h3>Ended Matches</h3>
+                </div>
+                <span id="ended-count" class="count-label">0 ended</span>
+              </div>
+              <div id="ended-empty" class="empty-state hidden">No ended matches for this period.</div>
+              <div class="table-wrap">
+                <table class="match-table">
+                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">DETAILS</th></tr></thead>
+                  <tbody id="ended-matches-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </section>
+      </main>
+      <footer class="footer"><span>GREENPITCH / FOOTBALL PREDICTIONS</span><span>POINTS ONLY · NO REAL-MONEY BETTING</span></footer>
+    </div>
+  </body>
+</html>

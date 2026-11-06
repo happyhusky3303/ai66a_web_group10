@@ -13,15 +13,17 @@ deposits, wagers, or real-money features.
   text is `#98989D`.
 - Use Inter or a system sans-serif for interface copy and a monospace font for
   points, scores, and other numeric metrics.
-- Use a responsive 12-column dashboard: matches occupy eight columns and the
-  leaderboard four; stack them on narrow screens.
+- Use a responsive 12-column analytics dashboard with compact KPI cards and
+  charts; stack content on narrow screens.
 - Keep table separators subtle, use an understated hover state, and maintain
   visible keyboard focus and readable contrast.
 
 ## Interaction
 
-- The home dashboard presents the signed-in user's points, matches, and global
-  leaderboard.
+- The home dashboard presents the signed-in user's points, prediction KPIs,
+  outcome charts, a confusion matrix, and recent activity.
+- Match Center is a fixtures-only view. Each fixture opens its detail page;
+  prediction choices are the primary action on an upcoming match's detail page.
 - Prediction choices are Home, Draw, or Away and are available only to signed-in
   users while a match is Before.
 - Login and registration use the same dark card system.

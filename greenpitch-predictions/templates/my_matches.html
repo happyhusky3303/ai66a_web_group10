@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#121212">
     <title>My Matches — GreenPitch</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=3">
-    <script src="/static/js/app.js?v=3" defer></script>
+    <link rel="stylesheet" href="/static/css/style.css?v=5">
+    <script src="/static/js/app.js?v=5" defer></script>
   </head>
   <body data-page="my-matches">
     <div class="shell">
@@ -16,7 +16,8 @@
           <span>GreenPitch<span class="brand-caption">MATCH INTELLIGENCE</span></span>
         </a>
         <nav class="top-nav" aria-label="Main navigation">
-          <a class="nav-link" href="/">Match Center</a>
+          <a class="nav-link" href="/">Home</a>
+          <a class="nav-link" href="/match-center">Match Center</a>
           <a class="nav-link active" href="/my-matches">My Matches</a>
           <span class="live-indicator"><span></span> LIVE DATA</span>
           <a id="auth-link" class="button button-quiet" href="/login">Sign in</a>
@@ -91,7 +92,7 @@
             </div>
             <div id="my-matches-empty" class="empty-state hidden">
               <p>You haven't placed any predictions yet.</p>
-              <a href="/" class="button button-primary" style="display:inline-block; margin-top:10px;">Browse Fixtures to Predict</a>
+              <a href="/match-center" class="button button-primary" style="display:inline-block; margin-top:10px;">Browse Fixtures to Predict</a>
             </div>
             <div id="my-matches-filtered-empty" class="empty-state hidden">
               No matches found for this filter.
@@ -123,4 +124,3 @@
     </div>
   </body>
 </html>
-

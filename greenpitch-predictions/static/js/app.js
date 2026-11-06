@@ -1,4 +1,51 @@
 const formatPoints = (points) => new Intl.NumberFormat().format(points);
+const PREDICTION_LIMIT = 10;
+let predictionQuotaRemaining = PREDICTION_LIMIT;
+let predictionQuotaResetAt = null;
+let predictionQuotaTimer = null;
+
+function renderPredictionQuota() {
+  const quota = document.querySelector("#prediction-quota");
+  if (!quota) return;
+
+  const resetSeconds = predictionQuotaResetAt === null
+    ? null
+    : Math.max(0, Math.ceil((predictionQuotaResetAt - Date.now()) / 1000));
+  const resetText = resetSeconds === null
+    ? "resets every minute"
+    : `resets in ${Math.floor(resetSeconds / 60)}m ${String(resetSeconds % 60).padStart(2, "0")}s`;
+
+  quota.textContent = `Predictions left: ${predictionQuotaResetAt === null ? "up to " : ""}${predictionQuotaRemaining} · ${resetText} · shared network`;
+  document.querySelectorAll(".choice-button, .prediction-option").forEach((button) => {
+    button.disabled = predictionQuotaRemaining === 0 || button.dataset.predictionSubmitted === "true";
+  });
+
+  if (resetSeconds === 0) {
+    predictionQuotaRemaining = PREDICTION_LIMIT;
+    predictionQuotaResetAt = null;
+    quota.textContent = `Predictions left: up to ${PREDICTION_LIMIT} · resets every minute · shared network`;
+    document.querySelectorAll(".choice-button, .prediction-option").forEach((button) => {
+      button.disabled = button.dataset.predictionSubmitted === "true";
+    });
+    if (predictionQuotaTimer !== null) {
+      window.clearInterval(predictionQuotaTimer);
+      predictionQuotaTimer = null;
+    }
+  }
+}
+
+function updatePredictionQuota(headers) {
+  const remaining = Number.parseInt(headers.get("X-RateLimit-Remaining"), 10);
+  const resetSeconds = Number.parseInt(headers.get("X-RateLimit-Reset"), 10);
+  if (!Number.isInteger(remaining) || !Number.isInteger(resetSeconds)) return;
+
+  predictionQuotaRemaining = Math.max(0, remaining);
+  predictionQuotaResetAt = Date.now() + Math.max(0, resetSeconds) * 1000;
+  renderPredictionQuota();
+  if (predictionQuotaTimer === null) {
+    predictionQuotaTimer = window.setInterval(renderPredictionQuota, 1000);
+  }
+}
 
 async function apiRequest(url, options = {}) {
   const response = await fetch(url, {
@@ -8,6 +55,7 @@ async function apiRequest(url, options = {}) {
       ...options.headers,
     },
   });
+  if (url === "/api/predict") updatePredictionQuota(response.headers);
   if (!response.ok) {
     let message = `Request failed (${response.status}).`;
     try {
@@ -252,48 +300,20 @@ function createMatchRow(match) {
   status.textContent = match.status;
   statusCell.append(status);
 
-  const predictCell = document.createElement("td");
-  predictCell.className = "prediction-cell";
-  if (match.status === "Before" && currentUser) {
-    const choices = document.createElement("div");
-    choices.className = "prediction-choices";
-    for (const [value, label] of [["home", "H"], ["draw", "D"], ["away", "A"]]) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "choice-button";
-      button.textContent = label;
-      button.title = `Predict ${label === "H" ? match.home_team : label === "A" ? match.away_team : "a draw"}`;
-      button.setAttribute("aria-label", button.title);
-      button.addEventListener("click", () => submitPrediction(match.id, value, button));
-      choices.append(button);
-    }
-    predictCell.append(choices);
-  } else if (match.status === "Before") {
-    const link = document.createElement("a");
-    link.href = "/login";
-    link.className = "sign-in-prompt";
-    link.textContent = "Sign in to predict";
-    predictCell.append(link);
-  } else if (match.home_score !== null && match.away_score !== null) {
-    const score = document.createElement("span");
-    score.className = "mono score";
-    score.textContent = `${match.home_score} — ${match.away_score}`;
-    predictCell.append(score);
-  } else if (match.status === "Ongoing") {
-    const liveText = document.createElement("span");
-    liveText.className = "mono muted";
-    liveText.textContent = "Live";
-    predictCell.append(liveText);
-  } else {
-    predictCell.textContent = "—";
-  }
+  const detailsCell = document.createElement("td");
+  detailsCell.className = "prediction-cell";
+  const viewLink = document.createElement("a");
+  viewLink.href = `/match/${encodeURIComponent(match.id)}`;
+  viewLink.className = "button button-primary view-match-button";
+  viewLink.textContent = "View match";
+  detailsCell.append(viewLink);
 
-  row.append(matchCell, dateCell, statusCell, predictCell);
+  row.append(matchCell, dateCell, statusCell, detailsCell);
   return row;
 }
 
 async function submitPrediction(matchId, winner, button) {
-  const notice = document.querySelector("#app-message");
+  const notice = document.querySelector("#app-message") || document.querySelector("#detail-message");
   const buttons = button.parentElement.querySelectorAll("button");
   buttons.forEach((choice) => { choice.disabled = true; });
   hideNotice(notice);
@@ -302,11 +322,15 @@ async function submitPrediction(matchId, winner, button) {
       method: "POST",
       body: JSON.stringify({ user_id: currentUser.id, match_id: matchId, predicted_winner: winner }),
     });
+    buttons.forEach((choice) => { choice.dataset.predictionSubmitted = "true"; });
+    renderPredictionQuota();
     showNotice(notice, "Prediction saved. You can only predict each match once.", "success");
     buttons.forEach((choice) => { choice.textContent = choice === button ? "✓" : "·"; });
   } catch (error) {
     showNotice(notice, error.message);
-    buttons.forEach((choice) => { choice.disabled = false; });
+    buttons.forEach((choice) => {
+      choice.disabled = predictionQuotaRemaining === 0 || choice.dataset.predictionSubmitted === "true";
+    });
   }
 }
 
@@ -361,32 +385,313 @@ async function loadCurrentUser() {
     if (currentUser) {
       authLink.classList.add("hidden");
       logoutButton?.classList.remove("hidden");
+      document.querySelector("#prediction-quota")?.classList.remove("hidden");
       if (name) name.textContent = currentUser.username;
       if (points) points.textContent = formatPoints(currentUser.points);
     } else {
       authLink.classList.remove("hidden");
       logoutButton?.classList.add("hidden");
+      document.querySelector("#prediction-quota")?.classList.add("hidden");
       if (name) name.textContent = "Sign in to track your score";
       if (points) points.textContent = "—";
     }
   }
-  if (loadError) showNotice(document.querySelector("#app-message") || document.querySelector("#my-app-message"), loadError.message);
+  if (loadError) {
+    showNotice(
+      document.querySelector("#app-message")
+        || document.querySelector("#my-app-message")
+        || document.querySelector("#home-app-message")
+        || document.querySelector("#detail-message"),
+      loadError.message,
+    );
+  }
 }
 
-async function initDashboard() {
+function addLogoutHandler() {
+  document.querySelector("#logout-button")?.addEventListener("click", async () => {
+    try {
+      await apiRequest("/auth/logout", { method: "POST" });
+      window.location.assign("/");
+    } catch (error) {
+      showNotice(
+        document.querySelector("#app-message")
+          || document.querySelector("#home-app-message")
+          || document.querySelector("#detail-message"),
+        error.message,
+      );
+    }
+  });
+}
+
+async function initMatchCenter() {
   document.querySelector("#refresh-button").addEventListener("click", loadMatches);
   document.querySelector("#match-type-filter")?.addEventListener("change", applyMatchFilter);
   document.querySelector("#match-league-filter")?.addEventListener("change", applyMatchFilter);
-  document.querySelector("#logout-button").addEventListener("click", async () => {
-    try {
-      await apiRequest("/auth/logout", { method: "POST" });
-      window.location.reload();
-    } catch (error) {
-      showNotice(document.querySelector("#app-message"), error.message);
-    }
-  });
+  addLogoutHandler();
   await loadCurrentUser();
-  await Promise.all([loadMatches(), loadLeaderboard()]);
+  await loadMatches();
+}
+
+function renderBarChart(container, entries, total) {
+  container.replaceChildren();
+  for (const entry of entries) {
+    const row = document.createElement("div");
+    row.className = "bar-row";
+    const label = document.createElement("span");
+    label.className = "bar-label";
+    label.textContent = entry.label;
+    const track = document.createElement("span");
+    track.className = "bar-track";
+    const bar = document.createElement("span");
+    bar.className = `bar-fill ${entry.className || ""}`;
+    bar.style.width = `${total > 0 ? Math.max(entry.value > 0 ? 4 : 0, (entry.value / total) * 100) : 0}%`;
+    track.append(bar);
+    const value = document.createElement("strong");
+    value.className = "bar-value mono";
+    value.textContent = String(entry.value);
+    row.append(label, track, value);
+    container.append(row);
+  }
+}
+
+function renderHomeAnalytics(data) {
+  const predictions = data.predictions || [];
+  const resolved = predictions.filter((item) => item.won === true || item.won === false);
+  const won = resolved.filter((item) => item.won).length;
+  const lost = resolved.length - won;
+  const active = predictions.filter((item) => item.status === "Before" || item.status === "Ongoing").length;
+  const earned = resolved.reduce((sum, item) => sum + Math.max(item.points_awarded || 0, 0), 0);
+  const lostPoints = resolved.reduce((sum, item) => sum + Math.abs(Math.min(item.points_awarded || 0, 0)), 0);
+  const accuracy = resolved.length > 0 ? Math.round((won / resolved.length) * 100) : null;
+
+  document.querySelector("#kpi-points").textContent = formatPoints(data.user_points);
+  document.querySelector("#kpi-earned").textContent = `+${formatPoints(earned)}`;
+  document.querySelector("#kpi-lost-points").textContent = `−${formatPoints(lostPoints)}`;
+  document.querySelector("#kpi-accuracy").textContent = accuracy === null ? "—" : `${accuracy}%`;
+  document.querySelector("#kpi-resolved").textContent = `${resolved.length} resolved`;
+  document.querySelector("#kpi-total").textContent = String(predictions.length);
+  document.querySelector("#kpi-active").textContent = String(active);
+
+  renderBarChart(document.querySelector("#outcome-chart"), [
+    { label: "Correct", value: won, className: "bar-green" },
+    { label: "Incorrect", value: lost, className: "bar-red" },
+    { label: "Awaiting result", value: predictions.length - resolved.length, className: "bar-muted" },
+  ], Math.max(predictions.length, 1));
+
+  const picks = ["home", "draw", "away"].map((pick) => {
+    const outcomes = resolved.filter((item) => item.predicted_winner === pick);
+    const correct = outcomes.filter((item) => item.won).length;
+    return {
+      label: `${pick[0].toUpperCase()}${pick.slice(1)}`,
+      value: outcomes.length > 0 ? Math.round((correct / outcomes.length) * 100) : 0,
+      count: outcomes.length,
+    };
+  });
+  const accuracyChart = document.querySelector("#pick-accuracy-chart");
+  accuracyChart.replaceChildren();
+  for (const pick of picks) {
+    const row = document.createElement("div");
+    row.className = "accuracy-row";
+    const label = document.createElement("span");
+    label.className = "bar-label";
+    label.textContent = pick.label;
+    const track = document.createElement("span");
+    track.className = "bar-track";
+    const bar = document.createElement("span");
+    bar.className = "bar-fill bar-green";
+    bar.style.width = `${pick.value}%`;
+    track.append(bar);
+    const value = document.createElement("strong");
+    value.className = "bar-value mono";
+    value.textContent = pick.count > 0 ? `${pick.value}%` : "—";
+    row.append(label, track, value);
+    accuracyChart.append(row);
+  }
+
+  const matrix = { home: { home: 0, draw: 0, away: 0 }, draw: { home: 0, draw: 0, away: 0 }, away: { home: 0, draw: 0, away: 0 } };
+  for (const item of resolved) {
+    if (matrix[item.actual_winner] && matrix[item.actual_winner][item.predicted_winner] !== undefined) {
+      matrix[item.actual_winner][item.predicted_winner]++;
+    }
+  }
+  const matrixBody = document.querySelector("#confusion-matrix-body");
+  matrixBody.replaceChildren();
+  for (const actual of ["home", "draw", "away"]) {
+    const row = document.createElement("tr");
+    const heading = document.createElement("th");
+    heading.scope = "row";
+    heading.textContent = actual.toUpperCase();
+    row.append(heading);
+    for (const pick of ["home", "draw", "away"]) {
+      const cell = document.createElement("td");
+      cell.textContent = String(matrix[actual][pick]);
+      if (actual === pick && matrix[actual][pick] > 0) cell.className = "matrix-correct";
+      row.append(cell);
+    }
+    matrixBody.append(row);
+  }
+
+  const recent = document.querySelector("#recent-predictions");
+  const recentEmpty = document.querySelector("#recent-empty");
+  recent.replaceChildren();
+  recentEmpty.classList.toggle("hidden", predictions.length > 0);
+  for (const item of predictions.slice(0, 5)) {
+    const row = document.createElement("a");
+    row.className = "recent-prediction";
+    row.href = `/match/${encodeURIComponent(item.match_id)}`;
+    const matchup = document.createElement("span");
+    matchup.className = "recent-matchup";
+    matchup.textContent = `${item.home_team} — ${item.away_team}`;
+    const detail = document.createElement("span");
+    detail.className = "recent-detail";
+    detail.textContent = `${item.predicted_label} pick · ${item.status}`;
+    const result = document.createElement("strong");
+    result.className = item.won === true ? "text-green" : item.won === false ? "text-red" : "muted";
+    result.textContent = item.points_awarded === null ? "Pending" : `${item.points_awarded > 0 ? "+" : ""}${item.points_awarded} pts`;
+    row.append(matchup, detail, result);
+    recent.append(row);
+  }
+}
+
+async function initHome() {
+  addLogoutHandler();
+  await loadCurrentUser();
+  const loading = document.querySelector("#home-loading");
+  const dashboard = document.querySelector("#home-dashboard");
+  const authRequired = document.querySelector("#home-auth-required");
+  if (!currentUser) {
+    loading.classList.add("hidden");
+    authRequired.classList.remove("hidden");
+    return;
+  }
+
+  document.querySelector("#home-username").textContent = `, ${currentUser.username}`;
+  try {
+    const data = await apiRequest("/api/my-matches");
+    renderHomeAnalytics(data);
+    dashboard.classList.remove("hidden");
+  } catch (error) {
+    showNotice(document.querySelector("#home-app-message"), error.message);
+  } finally {
+    loading.classList.add("hidden");
+  }
+}
+
+function appendProviderFields(container, value, path = "") {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => appendProviderFields(container, item, path ? `${path} / ${index + 1}` : String(index + 1)));
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const [key, nested] of Object.entries(value)) {
+      appendProviderFields(container, nested, path ? `${path} / ${key}` : key);
+    }
+    return;
+  }
+
+  const field = document.createElement("div");
+  field.className = "match-data-field";
+  const label = document.createElement("span");
+  label.className = "match-data-label";
+  label.textContent = path.replaceAll("_", " ");
+  const content = document.createElement("strong");
+  content.className = "match-data-value";
+  content.textContent = value === null || value === "" ? "—" : String(value);
+  field.append(label, content);
+  container.append(field);
+}
+
+async function initMatchDetail() {
+  addLogoutHandler();
+  await loadCurrentUser();
+  const loading = document.querySelector("#detail-loading");
+  const message = document.querySelector("#detail-message");
+  const content = document.querySelector("#detail-content");
+  const matchId = decodeURIComponent(window.location.pathname.split("/").pop());
+  try {
+    const match = await apiRequest(`/api/matches/${encodeURIComponent(matchId)}`);
+    const raw = match.provider_data || {};
+    const home = raw.homeTeam || {};
+    const away = raw.awayTeam || {};
+    const competition = raw.competition || {};
+    const score = raw.score || {};
+    const fullTime = score.fullTime || {};
+    const status = match.status || "Unavailable";
+
+    document.title = `${match.home_team} vs ${match.away_team} — GreenPitch`;
+    document.querySelector("#detail-title").textContent = `${match.home_team} vs ${match.away_team}`;
+    document.querySelector("#detail-subtitle").textContent = match.utc_date
+      ? new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short", timeZone: "UTC" }).format(new Date(match.utc_date)) + " UTC"
+      : "Kick-off time unavailable";
+    document.querySelector("#detail-competition").textContent = match.competition;
+    const statusElement = document.querySelector("#detail-status");
+    statusElement.textContent = status;
+    statusElement.className = `status status-${status.toLowerCase()}`;
+    document.querySelector("#detail-home-team").textContent = home.name || match.home_team;
+    document.querySelector("#detail-away-team").textContent = away.name || match.away_team;
+    const scoreElement = document.querySelector("#detail-score");
+    scoreElement.textContent = typeof fullTime.home === "number" && typeof fullTime.away === "number"
+      ? `${fullTime.home} — ${fullTime.away}`
+      : "VS";
+    document.querySelector("#detail-kickoff").textContent = match.utc_date
+      ? new Date(match.utc_date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + " UTC"
+      : "";
+
+    for (const [id, source, teamName] of [
+      ["detail-home-crest", home, match.home_team],
+      ["detail-away-crest", away, match.away_team],
+    ]) {
+      const crest = document.getElementById(id);
+      if (source.crest) {
+        crest.src = source.crest;
+        crest.alt = `${teamName} crest`;
+        crest.classList.remove("hidden");
+      }
+    }
+
+    const predictionPanel = document.querySelector("#prediction-panel");
+    const locked = document.querySelector("#prediction-locked");
+    if (status === "Before" && currentUser) {
+      const panel = document.querySelector("#detail-prediction-choices");
+      for (const [outcome, label] of [["home", match.home_team], ["draw", "Draw"], ["away", match.away_team]]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "button prediction-option";
+        button.disabled = predictionQuotaRemaining === 0;
+        button.textContent = label;
+        button.addEventListener("click", () => submitPrediction(match.id, outcome, button));
+        panel.append(button);
+      }
+      document.querySelector("#prediction-quota").classList.remove("hidden");
+    } else {
+      predictionPanel.classList.add("hidden");
+      locked.classList.remove("hidden");
+      locked.textContent = status === "Before"
+        ? "Sign in to submit a prediction."
+        : status === "Ongoing"
+          ? "Predictions are locked once a match starts."
+          : "This match is no longer accepting predictions.";
+      if (status === "Before" && !currentUser) {
+        const signIn = document.createElement("a");
+        signIn.href = "/login";
+        signIn.className = "button button-primary";
+        signIn.textContent = "Sign in";
+        locked.append(" ", signIn);
+      }
+    }
+
+    const fields = document.querySelector("#match-data-fields");
+    appendProviderFields(fields, raw);
+    document.querySelector("#provider-raw-data").textContent = JSON.stringify(raw, null, 2);
+    if (competition.emblem) {
+      document.querySelector("#detail-competition").textContent = competition.name || match.competition;
+    }
+    content.classList.remove("hidden");
+  } catch (error) {
+    showNotice(message, error.message);
+  } finally {
+    loading.classList.add("hidden");
+  }
 }
 
 function initAuthPage() {
@@ -669,7 +974,9 @@ function createMyMatchRow(item) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  if (document.body.dataset.page === "dashboard") initDashboard();
+  if (document.body.dataset.page === "home") initHome();
+  if (document.body.dataset.page === "match-center") initMatchCenter();
+  if (document.body.dataset.page === "match-detail") initMatchDetail();
   if (document.body.dataset.page === "my-matches") initMyMatches();
   if (document.body.dataset.page === "auth") initAuthPage();
 });

@@ -80,6 +80,7 @@ def get_current_user(
 @limiter.limit("5/minute")
 def register(
     request: Request,
+    response: Response,
     credentials: Credentials,
     db: Annotated[Session, Depends(get_db)],
 ) -> User:
@@ -104,6 +105,7 @@ def register(
 @limiter.limit("5/minute")
 def login(
     request: Request,
+    response: Response,
     credentials: Credentials,
     db: Annotated[Session, Depends(get_db)],
 ) -> User:

@@ -6,7 +6,7 @@ from datetime import date, timedelta
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from app.utils.rate_limit import limiter
 
@@ -58,6 +58,7 @@ def _normalize_match(match: dict[str, Any]) -> dict[str, Any]:
         "home_score": full_time.get("home"),
         "away_score": full_time.get("away"),
         "winner": actual_winner,
+        "provider_data": match,
     }
 
 
@@ -187,10 +188,20 @@ async def _fetch_matches() -> list[dict[str, Any]]:
 
 @router.get("/matches")
 @limiter.limit("20/minute")
-async def list_matches(request: Request) -> dict[str, Any]:
+async def list_matches(request: Request, response: Response) -> dict[str, Any]:
     matches = await _fetch_matches()
     return {
         "matches": matches,
         "fetched_at": _cache_fetched_at,
         "cache_ttl_seconds": CACHE_TTL_SECONDS,
     }
+
+
+@router.get("/matches/{match_id}")
+@limiter.limit("20/minute")
+async def get_match(match_id: str, request: Request, response: Response) -> dict[str, Any]:
+    matches = await _fetch_matches()
+    match = next((item for item in matches if item["id"] == match_id), None)
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match was not found in the current fixtures.")
+    return match

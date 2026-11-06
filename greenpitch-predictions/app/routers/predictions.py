@@ -2,7 +2,7 @@ import hmac
 import os
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -38,6 +38,7 @@ class ResolveRequest(BaseModel):
 @limiter.limit("10/minute")
 async def create_prediction(
     request: Request,
+    response: Response,
     payload: PredictionRequest,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
@@ -89,6 +90,7 @@ async def create_prediction(
 @limiter.limit("30/minute")
 async def get_my_matches(
     request: Request,
+    response: Response,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
@@ -178,7 +180,11 @@ async def get_my_matches(
 
 @router.get("/api/leaderboard")
 @limiter.limit("20/minute")
-def leaderboard(request: Request, db: Annotated[Session, Depends(get_db)]) -> dict:
+def leaderboard(
+    request: Request,
+    response: Response,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict:
     users = db.scalars(select(User).order_by(User.points.desc(), User.username.asc()).limit(50)).all()
     return {
         "leaderboard": [
