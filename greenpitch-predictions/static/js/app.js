@@ -399,12 +399,16 @@ function createMatchRow(match) {
     label.textContent = "Points received";
     const result = document.createElement("strong");
     result.className = "received-points-value";
-    let pointsReceived = 0;
-    if (prediction && match.winner) {
-      pointsReceived = prediction === match.winner ? 100 : -100;
+    if (prediction && !match.winner) {
+      result.textContent = "Pending";
+      result.classList.add("muted");
+    } else {
+      const pointsReceived = prediction
+        ? prediction === match.winner ? 100 : -100
+        : 0;
+      result.textContent = `${pointsReceived > 0 ? "+" : ""}${pointsReceived} pts`;
+      result.classList.add(pointsReceived > 0 ? "text-green" : pointsReceived < 0 ? "text-red" : "muted");
     }
-    result.textContent = `${pointsReceived > 0 ? "+" : ""}${pointsReceived} pts`;
-    result.classList.add(pointsReceived > 0 ? "text-green" : pointsReceived < 0 ? "text-red" : "muted");
     points.append(label, result);
     detailsCell.append(points);
   } else {
