@@ -239,6 +239,12 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 .text-button { padding: 0; border: 0; background: transparent; color: var(--green); cursor: pointer; font-size: inherit; }
 .auth-card .card-footnote { margin-top: 24px; text-align: center; }
 
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 @media (max-width: 920px) {
   .matches-card { grid-column: span 12; }
   .leaderboard-card { grid-column: span 12; }
