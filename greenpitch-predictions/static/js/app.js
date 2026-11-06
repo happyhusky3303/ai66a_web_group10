@@ -49,24 +49,39 @@ function updatePredictionQuota(headers) {
 }
 
 async function apiRequest(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
-    },
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...options.headers,
+      },
+    });
+  } catch {
+    throw new Error("Không thể kết nối tới máy chủ. Vui lòng kiểm tra mạng và thử lại.");
+  }
   if (url === "/api/predict") updatePredictionQuota(response.headers);
   if (!response.ok) {
     let message = `Request failed (${response.status}).`;
+    let body = {};
     try {
-      const body = await response.json();
-      if (typeof body.detail === "string") message = body.detail;
+      body = await response.json();
+      if (typeof body.message === "string") message = body.message;
+      else if (typeof body.detail === "string") message = body.detail;
+      else if (body.detail && typeof body.detail.message === "string") message = body.detail.message;
       else if (Array.isArray(body.detail)) message = body.detail.map((issue) => issue.msg).join(" ");
     } catch {
-      // Keep the HTTP status message when the server response isn't JSON.
+      // Use a generic HTTP message if the error response isn't valid JSON.
     }
-    throw new Error(message);
+    const error = new Error(response.status >= 500
+      ? "Hệ thống đang bảo trì hoặc gặp sự cố. Vui lòng thử lại sau."
+      : message);
+    const fields = body.errors || body.detail?.errors;
+    error.code = body.code || body.detail?.code;
+    error.fields = Array.isArray(fields) ? fields : [];
+    error.status = response.status;
+    throw error;
   }
   if (response.status === 204) return null;
   return response.json();
@@ -871,39 +886,95 @@ async function initMatchDetail() {
 function initAuthPage() {
   const form = document.querySelector("#auth-form");
   const toggle = document.querySelector("#auth-toggle");
+  const submit = document.querySelector("#auth-submit");
+  const message = document.querySelector("#auth-message");
+  const username = document.querySelector("#username");
+  const password = document.querySelector("#password");
+  const email = document.querySelector("#email");
+  const confirmPassword = document.querySelector("#confirm-password");
+  const signupFields = document.querySelector("#signup-fields");
+  const confirmField = document.querySelector("#confirm-password-field");
   let registering = false;
+  let submitting = false;
+
+  const fieldError = (name) => document.querySelector(`#${name}-error`);
+  const setFieldError = (name, text) => {
+    const input = document.querySelector(`#${name === "confirm_password" ? "confirm-password" : name}`);
+    const output = fieldError(name === "confirm_password" ? "confirm-password" : name);
+    if (output) output.textContent = text || "";
+    input?.setAttribute("aria-invalid", text ? "true" : "false");
+  };
+  const clearFieldErrors = () => ["username", "email", "password", "confirm-password"].forEach((name) => setFieldError(name, ""));
+
+  const validate = () => {
+    clearFieldErrors();
+    let valid = true;
+    const usernameValue = username.value.trim();
+    if (!usernameValue) { setFieldError("username", "Tên đăng nhập không được để trống."); valid = false; }
+    else if (registering && !/^[A-Za-z0-9_]{3,30}$/.test(usernameValue)) { setFieldError("username", "Username phải từ 3 đến 30 ký tự và chỉ gồm chữ cái, số hoặc dấu gạch dưới."); valid = false; }
+    else if (!registering && usernameValue.length < 3) { setFieldError("username", "Nhập username hoặc email hợp lệ."); valid = false; }
+    if (registering) {
+      if (!email.value.trim()) { setFieldError("email", "Email không được để trống."); valid = false; }
+      else if (!email.validity.valid) { setFieldError("email", "Email không đúng định dạng."); valid = false; }
+      if (!password.value) { setFieldError("password", "Mật khẩu không được để trống."); valid = false; }
+      else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,128}$/.test(password.value)) { setFieldError("password", "Mật khẩu phải từ 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt."); valid = false; }
+      if (!confirmPassword.value) { setFieldError("confirm-password", "Vui lòng nhập lại mật khẩu."); valid = false; }
+      else if (confirmPassword.value !== password.value) { setFieldError("confirm-password", "Mật khẩu nhập lại không khớp."); valid = false; }
+    } else if (!password.value) { setFieldError("password", "Mật khẩu không được để trống."); valid = false; }
+    return valid;
+  };
+
+  form.querySelectorAll("input").forEach((input) => input.addEventListener("input", () => {
+    setFieldError(input.name === "confirm_password" ? "confirm-password" : input.name, "");
+    hideNotice(message);
+  }));
+
   toggle.addEventListener("click", () => {
+    if (submitting) return;
     registering = !registering;
     document.querySelector("#auth-heading").textContent = registering ? "Create your account" : "Welcome back";
     document.querySelector("#auth-description").textContent = registering
       ? "Join the match center. Your account starts with 1,000 points."
       : "Sign in to submit predictions and follow your points.";
     document.querySelector("#auth-submit").textContent = registering ? "Create account" : "Sign in";
+    document.querySelector("#username-label").textContent = registering ? "Username" : "Username or email";
+    signupFields.classList.toggle("hidden", !registering);
+    confirmField.classList.toggle("hidden", !registering);
+    email.required = registering;
+    confirmPassword.required = registering;
+    username.maxLength = registering ? 30 : 254;
+    username.minLength = registering ? 3 : 3;
     document.querySelector("#auth-switch-label").textContent = registering ? "Already have an account?" : "New to GreenPitch?";
     toggle.textContent = registering ? "Sign in" : "Create an account";
     document.querySelector("#password").autocomplete = registering ? "new-password" : "current-password";
     hideNotice(document.querySelector("#auth-message"));
+    clearFieldErrors();
   });
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const submit = document.querySelector("#auth-submit");
-    const message = document.querySelector("#auth-message");
+    if (submitting || !validate()) return;
+    submitting = true;
     submit.disabled = true;
     submit.textContent = registering ? "Creating account…" : "Signing in…";
     hideNotice(message);
-    const formData = new FormData(form);
+    const payload = registering
+      ? { username: username.value.trim(), email: email.value.trim(), password: password.value, confirm_password: confirmPassword.value }
+      : { username: username.value.trim(), password: password.value };
     try {
       await apiRequest(registering ? "/auth/register" : "/auth/login", {
         method: "POST",
-        body: JSON.stringify({
-          username: formData.get("username"),
-          password: formData.get("password"),
-        }),
+        body: JSON.stringify(payload),
       });
       window.location.assign("/");
     } catch (error) {
-      showNotice(message, error.message);
+      if (error.fields?.length) {
+        for (const issue of error.fields) setFieldError(issue.field, issue.message);
+        if (error.code === "VALIDATION_ERROR") showNotice(message, "Vui lòng kiểm tra lại các trường được đánh dấu.");
+        else showNotice(message, error.message);
+      } else showNotice(message, error.message);
+    } finally {
+      submitting = false;
       submit.disabled = false;
       submit.textContent = registering ? "Create account" : "Sign in";
     }
