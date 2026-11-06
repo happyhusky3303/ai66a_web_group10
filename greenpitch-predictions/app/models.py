@@ -16,7 +16,6 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
 
-
 class Prediction(Base):
     __tablename__ = "predictions"
     __table_args__ = (

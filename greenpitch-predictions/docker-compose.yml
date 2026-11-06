@@ -5,7 +5,7 @@ services:
     ports:
       - "${APP_PORT:-8000}:8000"
     environment:
-      DATABASE_URL: sqlite:////data/predictions.db
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/predictions.db}
       FOOTBALL_DATA_API_KEY: ${FOOTBALL_DATA_API_KEY:-}
       SESSION_SECRET_KEY: "${SESSION_SECRET_KEY:?Set SESSION_SECRET_KEY in .env}"
       ADMIN_TOKEN: "${ADMIN_TOKEN:?Set ADMIN_TOKEN in .env}"

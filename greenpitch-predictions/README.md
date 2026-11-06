@@ -1,8 +1,8 @@
 # GreenPitch Predictions
 
-A lightweight football match prediction web app built with FastAPI, SQLite,
-SQLAlchemy, and vanilla HTML/CSS/JavaScript. It uses points only; there are no
-real-money or betting features.
+A lightweight football match prediction web app built with FastAPI, SQLite or
+PostgreSQL, SQLAlchemy, and vanilla HTML/CSS/JavaScript. It uses points only;
+there are no real-money or betting features.
 
 ## Requirements
 
@@ -26,12 +26,19 @@ Set the environment variables and start the development server:
 $env:FOOTBALL_DATA_API_KEY = "your-football-data.org-token"
 $env:SESSION_SECRET_KEY = "a-long-random-secret"
 $env:ADMIN_TOKEN = "a-separate-long-random-token"
+# Optional: set this to use PostgreSQL instead of the default SQLite database.
+# $env:DATABASE_URL = "postgresql://postgres:YOUR-PASSWORD@db.tyqgbczmvhxrlsjhjzbu.supabase.co:5432/postgres"
 uvicorn app.main:app --reload
 ```
 
 Open <http://127.0.0.1:8000>. Interactive API documentation is available at
-<http://127.0.0.1:8000/docs>. The SQLite database is created as
-`predictions.db` in the current working directory.
+<http://127.0.0.1:8000/docs>. Without `DATABASE_URL`, the SQLite database is
+created as `predictions.db` in the current working directory. To connect to
+PostgreSQL, set `DATABASE_URL` to your PostgreSQL connection string before
+starting the app. URL-encode reserved characters in the password (for example,
+`@` as `%40`); for direct local runs, set it in the PowerShell environment as
+shown above. Docker Compose reads `.env` automatically. Keep the real connection
+string out of source control.
 
 `SESSION_SECRET_KEY` should be a unique, long random value in deployments. If
 omitted for local development, the app generates a temporary key at startup, so
@@ -47,18 +54,21 @@ file and replace the example secrets with unique random values:
 Copy-Item .env.example .env
 ```
 
-Set `FOOTBALL_DATA_API_KEY` in `.env` to enable live match listings, then build
-and start the app:
+Set `FOOTBALL_DATA_API_KEY` in `.env` to enable live match listings. Docker
+defaults to SQLite stored in the persistent `predictions_data` volume; to use
+PostgreSQL instead, set `DATABASE_URL` in `.env` to your PostgreSQL connection
+string (for example, the Supabase URL shown in `.env.example`, with your
+password substituted). Then build and start the app:
 
 ```powershell
 docker compose up --build -d
 ```
 
 Open <http://localhost:8000>; the API documentation is at
-<http://localhost:8000/docs>. Docker Compose stores the SQLite database in the
-persistent `predictions_data` volume. Stop the app with
-`docker compose down`; the database volume is retained. To remove the database
-as well, run `docker compose down --volumes`.
+<http://localhost:8000/docs>. With the default SQLite configuration, Docker
+Compose stores the database in the persistent `predictions_data` volume. Stop
+the app with `docker compose down`; the database volume is retained. To remove
+the database as well, run `docker compose down --volumes`.
 
 If the browser says it cannot connect, run Compose from this project directory
 and recreate the container so the host port mapping is applied:
