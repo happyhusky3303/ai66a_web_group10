@@ -91,6 +91,7 @@ For production behind HTTPS, set `SESSION_HTTPS_ONLY=true` in `.env`.
 - `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`
 - `GET /api/matches` — football-data.org fixtures, cached for 300 seconds
 - `GET /api/matches/{match_id}` — normalized fixture plus the complete provider response
+- `GET /api/my-predictions` — signed-in user's existing match picks
 - `POST /api/predict` — authenticated user's `match_id` and `predicted_winner`
   (`home`, `away`, or `draw`); `user_id` is optional and must match the session
 - `GET /api/leaderboard`

@@ -34,6 +34,26 @@ class ResolveRequest(BaseModel):
     actual_winner: Winner
 
 
+@router.get("/api/my-predictions")
+@limiter.limit("30/minute")
+def get_my_prediction_choices(
+    request: Request,
+    response: Response,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    predictions = db.execute(
+        select(Prediction.match_id, Prediction.predicted_winner)
+        .where(Prediction.user_id == user.id)
+    ).all()
+    return {
+        "predictions": [
+            {"match_id": match_id, "predicted_winner": predicted_winner}
+            for match_id, predicted_winner in predictions
+        ]
+    }
+
+
 @router.post("/api/predict", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 async def create_prediction(

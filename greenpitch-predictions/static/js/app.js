@@ -1,5 +1,6 @@
 const formatPoints = (points) => new Intl.NumberFormat().format(points);
 const PREDICTION_LIMIT = 10;
+let predictedMatchIds = new Set();
 let predictionQuotaRemaining = PREDICTION_LIMIT;
 let predictionQuotaResetAt = null;
 let predictionQuotaTimer = null;
@@ -233,10 +234,12 @@ function applyMatchFilter() {
     element.classList.remove("hidden");
     const rows = element.querySelectorAll("tbody tr");
     let visibleInGroup = 0;
+    const showPredicted = document.querySelector("#show-predicted-filter")?.checked || false;
 
     rows.forEach((row) => {
       const matchesLeague = selectedLeague === "all" || row.dataset.competition === selectedLeague;
-      if (matchesLeague) {
+      const matchesPredictionFilter = showPredicted || row.dataset.predicted !== "true";
+      if (matchesLeague && matchesPredictionFilter) {
         row.classList.remove("hidden");
         visibleInGroup++;
       } else {
@@ -248,9 +251,20 @@ function applyMatchFilter() {
 
     if (visibleInGroup === 0) {
       if (emptyEl) {
-        emptyEl.textContent = selectedLeague === "all"
-          ? defaultEmptyText
-          : `No ${suffix} matches in ${selectedLeague}.`;
+        const leagueRows = Array.from(rows).filter(
+          (row) => selectedLeague === "all" || row.dataset.competition === selectedLeague,
+        );
+        if (
+          !showPredicted
+          && leagueRows.length > 0
+          && leagueRows.every((row) => row.dataset.predicted === "true")
+        ) {
+          emptyEl.textContent = "No unpredicted matches in this group. Turn on “Show predicted” to include them.";
+        } else {
+          emptyEl.textContent = selectedLeague === "all"
+            ? defaultEmptyText
+            : `No ${suffix} matches in ${selectedLeague}.`;
+        }
         emptyEl.classList.remove("hidden");
       }
     } else {
@@ -335,6 +349,7 @@ function createMatchRow(match) {
   const row = document.createElement("tr");
   row.dataset.competition = match.competition || "";
   row.dataset.status = match.status || "";
+  row.dataset.predicted = String(predictedMatchIds.has(String(match.id)));
   const matchCell = document.createElement("td");
   matchCell.className = "match-cell";
   const competition = document.createElement("span");
@@ -385,6 +400,19 @@ async function submitPrediction(matchId, winner, button) {
     });
     buttons.forEach((choice) => { choice.dataset.predictionSubmitted = "true"; });
     renderPredictionQuota();
+    if (document.body.dataset.page === "match-detail") {
+      const predictionPanel = document.querySelector("#prediction-panel");
+      const locked = document.querySelector("#prediction-locked");
+      const team = winner === "home"
+        ? document.querySelector("#detail-home-team").textContent
+        : winner === "away"
+          ? document.querySelector("#detail-away-team").textContent
+          : null;
+      predictionPanel.classList.add("hidden");
+      locked.classList.remove("hidden");
+      locked.textContent = team ? `You predicted ${team} to win.` : "You predicted a draw.";
+      return;
+    }
     showNotice(notice, "Prediction saved. You can only predict each match once.", "success");
     buttons.forEach((choice) => { choice.textContent = choice === button ? "✓" : "·"; });
   } catch (error) {
@@ -488,9 +516,26 @@ async function initMatchCenter() {
   document.querySelector("#refresh-button").addEventListener("click", loadMatches);
   document.querySelector("#match-type-filter")?.addEventListener("change", applyMatchFilter);
   document.querySelector("#match-league-filter")?.addEventListener("change", applyMatchFilter);
+  document.querySelector("#show-predicted-filter")?.addEventListener("change", applyMatchFilter);
   addLogoutHandler();
   await loadCurrentUser();
+  let predictionLoadError = null;
+  if (currentUser) {
+    try {
+      const data = await apiRequest("/api/my-predictions");
+      predictedMatchIds = new Set(data.predictions.map((item) => String(item.match_id)));
+      document.querySelector("#show-predicted-control")?.classList.remove("hidden");
+    } catch (error) {
+      predictionLoadError = error;
+    }
+  }
   await loadMatches();
+  if (predictionLoadError) {
+    showNotice(
+      document.querySelector("#app-message"),
+      `Could not load your existing predictions, so predicted matches may be included: ${predictionLoadError.message}`,
+    );
+  }
 }
 
 function renderBarChart(container, entries, total) {
@@ -675,6 +720,17 @@ async function initMatchDetail() {
   const matchId = decodeURIComponent(window.location.pathname.split("/").pop());
   try {
     const match = await apiRequest(`/api/matches/${encodeURIComponent(matchId)}`);
+    let existingPrediction = null;
+    let predictionLookupFailed = false;
+    if (currentUser) {
+      try {
+        const data = await apiRequest("/api/my-predictions");
+        existingPrediction = data.predictions.find((item) => String(item.match_id) === String(match.id)) || null;
+      } catch (error) {
+        predictionLookupFailed = true;
+        showNotice(message, `Could not check your existing prediction: ${error.message}`);
+      }
+    }
     const raw = match.provider_data || {};
     const home = raw.homeTeam || {};
     const away = raw.awayTeam || {};
@@ -716,7 +772,21 @@ async function initMatchDetail() {
 
     const predictionPanel = document.querySelector("#prediction-panel");
     const locked = document.querySelector("#prediction-locked");
-    if (status === "Before" && currentUser) {
+    if (existingPrediction) {
+      predictionPanel.classList.add("hidden");
+      locked.classList.remove("hidden");
+      if (existingPrediction.predicted_winner === "home") {
+        locked.textContent = `You predicted ${match.home_team} to win.`;
+      } else if (existingPrediction.predicted_winner === "away") {
+        locked.textContent = `You predicted ${match.away_team} to win.`;
+      } else {
+        locked.textContent = "You predicted a draw.";
+      }
+    } else if (predictionLookupFailed) {
+      predictionPanel.classList.add("hidden");
+      locked.classList.remove("hidden");
+      locked.textContent = "Your prediction could not be verified. Refresh the page before trying again.";
+    } else if (status === "Before" && currentUser) {
       const panel = document.querySelector("#detail-prediction-choices");
       for (const [outcome, label] of [["home", match.home_team], ["draw", "Draw"], ["away", match.away_team]]) {
         const button = document.createElement("button");

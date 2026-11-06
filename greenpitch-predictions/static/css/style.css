@@ -92,6 +92,8 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 .trophy { color: var(--green); }
 .section-heading { margin-bottom: 16px; flex-wrap: wrap; }
 .matches-filter-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.checkbox-filter { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; cursor: pointer; white-space: nowrap; }
+.checkbox-filter input { width: 14px; height: 14px; margin: 0; accent-color: var(--green); cursor: pointer; }
 .prediction-quota { color: var(--green); font: 10px var(--font-mono); }
 .select-input { max-width: 180px; min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text); font: 12px var(--font-sans); cursor: pointer; outline: none; transition: border-color .15s; text-overflow: ellipsis; }
 .select-input:hover { border-color: #404044; }
