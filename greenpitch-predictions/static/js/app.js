@@ -328,14 +328,19 @@ function createTeamBadge(teamName, crest, side) {
   return team;
 }
 
-function createTeamPair(homeName, homeCrest, awayName, awayCrest) {
+function createTeamPair(homeName, homeCrest, awayName, awayCrest, centerText = "vs") {
   const pair = document.createElement("div");
   pair.className = "team-pair";
-  pair.setAttribute("aria-label", `${homeName} versus ${awayName}`);
+  pair.setAttribute(
+    "aria-label",
+    centerText === "vs"
+      ? `${homeName} versus ${awayName}`
+      : `${homeName} ${centerText} ${awayName}`,
+  );
 
   const separator = document.createElement("span");
-  separator.className = "team-versus";
-  separator.textContent = "vs";
+  separator.className = centerText === "vs" ? "team-versus" : "team-score";
+  separator.textContent = centerText;
 
   pair.append(
     createTeamBadge(homeName, homeCrest, "home"),
@@ -355,11 +360,18 @@ function createMatchRow(match) {
   const competition = document.createElement("span");
   competition.className = "competition-name";
   competition.textContent = match.competition;
+  const isEnded = match.status === "Ended";
+  const resultText = isEnded
+    ? typeof match.home_score === "number" && typeof match.away_score === "number"
+      ? `${match.home_score}–${match.away_score}`
+      : "FT"
+    : "vs";
   const teams = createTeamPair(
     match.home_team,
     match.home_crest,
     match.away_team,
     match.away_crest,
+    resultText,
   );
   matchCell.append(competition, teams);
 
@@ -378,11 +390,30 @@ function createMatchRow(match) {
 
   const detailsCell = document.createElement("td");
   detailsCell.className = "prediction-cell";
-  const viewLink = document.createElement("a");
-  viewLink.href = `/match/${encodeURIComponent(match.id)}`;
-  viewLink.className = "button button-primary view-match-button";
-  viewLink.textContent = "View match";
-  detailsCell.append(viewLink);
+  if (isEnded) {
+    const prediction = myPredictionChoices.get(String(match.id));
+    const points = document.createElement("div");
+    points.className = "received-points";
+    const label = document.createElement("span");
+    label.className = "received-points-label";
+    label.textContent = "Points received";
+    const result = document.createElement("strong");
+    result.className = "received-points-value";
+    let pointsReceived = 0;
+    if (prediction && match.winner) {
+      pointsReceived = prediction === match.winner ? 100 : -100;
+    }
+    result.textContent = `${pointsReceived > 0 ? "+" : ""}${pointsReceived} pts`;
+    result.classList.add(pointsReceived > 0 ? "text-green" : pointsReceived < 0 ? "text-red" : "muted");
+    points.append(label, result);
+    detailsCell.append(points);
+  } else {
+    const viewLink = document.createElement("a");
+    viewLink.href = `/match/${encodeURIComponent(match.id)}`;
+    viewLink.className = "button button-primary view-match-button";
+    viewLink.textContent = "View match";
+    detailsCell.append(viewLink);
+  }
 
   row.append(matchCell, dateCell, statusCell, detailsCell);
   return row;
@@ -456,6 +487,7 @@ async function loadLeaderboard() {
 }
 
 let currentUser = null;
+let myPredictionChoices = new Map();
 
 async function loadCurrentUser() {
   let loadError = null;
@@ -524,6 +556,9 @@ async function initMatchCenter() {
     try {
       const data = await apiRequest("/api/my-predictions");
       predictedMatchIds = new Set(data.predictions.map((item) => String(item.match_id)));
+      myPredictionChoices = new Map(
+        data.predictions.map((item) => [String(item.match_id), item.predicted_winner]),
+      );
       document.querySelector("#show-predicted-control")?.classList.remove("hidden");
     } catch (error) {
       predictionLoadError = error;

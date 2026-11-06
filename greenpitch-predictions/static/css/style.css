@@ -125,6 +125,7 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 .team-logo { width: 24px; height: 24px; flex: 0 0 24px; object-fit: contain; }
 .team-logo-fallback { display: inline-grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; background: var(--surface-raised); color: var(--muted); font: 8px var(--font-mono); }
 .team-versus { flex: 0 0 auto; color: var(--muted); font: 10px var(--font-mono); text-transform: lowercase; }
+.team-score { flex: 0 0 auto; color: var(--text); font: 700 14px var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .date-cell { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .status { display: inline-block; padding: 4px 7px; border-radius: 5px; background: var(--surface-raised); color: var(--muted); font: 10px var(--font-mono); white-space: nowrap; }
 .status-before, .status-ongoing { background: var(--green-soft); color: var(--green); }
@@ -138,6 +139,9 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 .sign-in-prompt:hover, .text-button:hover { text-decoration: underline; }
 .score { font-size: 12px; }
 .view-match-button { display: inline-flex; min-height: 32px; align-items: center; padding: 0 11px; font-size: 11px; white-space: nowrap; }
+.received-points { display: grid; justify-items: center; gap: 3px; white-space: nowrap; }
+.received-points-label { color: var(--muted); font-size: 9px; }
+.received-points-value { font: 700 12px var(--font-mono); }
 
 .home-dashboard { display: grid; gap: 20px; }
 .kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
