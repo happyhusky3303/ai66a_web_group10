@@ -357,19 +357,20 @@ async function loadCurrentUser() {
   const logoutButton = document.querySelector("#logout-button");
   const name = document.querySelector("#user-name");
   const points = document.querySelector("#user-points");
-  if (!authLink) return;
-  if (currentUser) {
-    authLink.classList.add("hidden");
-    logoutButton.classList.remove("hidden");
-    name.textContent = currentUser.username;
-    points.textContent = formatPoints(currentUser.points);
-  } else {
-    authLink.classList.remove("hidden");
-    logoutButton.classList.add("hidden");
-    name.textContent = "Sign in to track your score";
-    points.textContent = "—";
+  if (authLink) {
+    if (currentUser) {
+      authLink.classList.add("hidden");
+      logoutButton?.classList.remove("hidden");
+      if (name) name.textContent = currentUser.username;
+      if (points) points.textContent = formatPoints(currentUser.points);
+    } else {
+      authLink.classList.remove("hidden");
+      logoutButton?.classList.add("hidden");
+      if (name) name.textContent = "Sign in to track your score";
+      if (points) points.textContent = "—";
+    }
   }
-  if (loadError) showNotice(document.querySelector("#app-message"), loadError.message);
+  if (loadError) showNotice(document.querySelector("#app-message") || document.querySelector("#my-app-message"), loadError.message);
 }
 
 async function initDashboard() {
