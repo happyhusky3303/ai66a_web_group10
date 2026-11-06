@@ -1,11 +1,13 @@
 import logging
 import os
 import secrets
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -49,6 +51,19 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             if col not in existing_columns:
                 conn.execute(text(f"ALTER TABLE predictions ADD COLUMN {col} {col_type}"))
                 existing_columns.add(col)
+    with engine.begin() as conn:
+        existing_columns = {column["name"] for column in inspect(conn).get_columns("users")}
+        datetime_type = "TIMESTAMP WITH TIME ZONE" if engine.dialect.name == "postgresql" else "DATETIME"
+        for col, col_type in [
+            ("email", "VARCHAR(254)"),
+            ("failed_login_attempts", "INTEGER NOT NULL DEFAULT 0"),
+            ("locked_until", datetime_type),
+            ("is_active", "BOOLEAN NOT NULL DEFAULT TRUE"),
+        ]:
+            if col not in existing_columns:
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
+        # Legacy accounts have no email yet; new registrations use normalized unique emails.
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users (email)"))
     yield
 
 
@@ -69,10 +84,16 @@ def rate_limit_exceeded_handler(request: Request, _: RateLimitExceeded) -> Respo
         if request.url.path == "/api/predict"
         else "Too many requests. Please try again later."
     )
-    response = JSONResponse(
-        status_code=429,
-        content={"detail": detail},
-    )
+    if request.url.path.startswith("/auth/"):
+        response = JSONResponse(status_code=429, content={
+            "success": False,
+            "code": "TOO_MANY_REQUESTS",
+            "message": "Bạn gửi quá nhiều yêu cầu. Vui lòng thử lại sau.",
+            "errors": [],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    else:
+        response = JSONResponse(status_code=429, content={"detail": detail})
     return add_rate_limit_headers(request, response)
 
 
@@ -81,11 +102,39 @@ async def limited_http_exception_handler(
     exc: StarletteHTTPException,
 ) -> Response:
     response = await fastapi_http_exception_handler(request, exc)
+    if request.url.path.startswith("/auth/"):
+        detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
+        code = detail.get("code") or ({400: "INVALID_INPUT", 401: "AUTH_FAILED", 403: "FORBIDDEN", 409: "CONFLICT", 429: "TOO_MANY_REQUESTS"}.get(exc.status_code, "SERVER_ERROR"))
+        response = JSONResponse(status_code=exc.status_code, content={
+            "success": False,
+            "code": code,
+            "message": detail.get("message", "Yêu cầu không thể xử lý."),
+            "errors": detail.get("errors", []),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }, headers=dict(response.headers))
     return add_rate_limit_headers(request, response)
 
 
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 app.add_exception_handler(StarletteHTTPException, limited_http_exception_handler)
+
+
+@app.exception_handler(RequestValidationError)
+async def auth_validation_error_handler(request: Request, exc: RequestValidationError) -> Response:
+    if not request.url.path.startswith("/auth/"):
+        from fastapi.exception_handlers import request_validation_exception_handler
+        return await request_validation_exception_handler(request, exc)
+    errors = []
+    for issue in exc.errors():
+        field = str(issue.get("loc", ["body", "input"])[-1])
+        errors.append({"field": field, "message": issue.get("msg", "Dữ liệu không hợp lệ.")})
+    return JSONResponse(status_code=400, content={
+        "success": False,
+        "code": "VALIDATION_ERROR" if request.url.path.endswith("register") else "INVALID_INPUT",
+        "message": "Vui lòng kiểm tra lại thông tin đã nhập.",
+        "errors": errors,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
 app.add_middleware(
     SessionMiddleware,
     secret_key=session_secret,
