@@ -23,11 +23,23 @@
           <h1 id="auth-heading">Welcome back</h1>
           <p id="auth-description" class="muted">Sign in to submit predictions and follow your points.</p>
           <div id="auth-message" class="notice hidden" role="alert" aria-live="assertive"></div>
-          <form id="auth-form">
-            <label for="username">Username</label>
-            <input id="username" name="username" type="text" minlength="3" maxlength="32" autocomplete="username" required>
+          <form id="auth-form" novalidate>
+            <label for="username" id="username-label">Username or email</label>
+            <input id="username" name="username" type="text" minlength="3" maxlength="254" autocomplete="username" aria-describedby="username-error" required>
+            <small id="username-error" class="field-error" aria-live="polite"></small>
+            <div id="signup-fields" class="hidden">
+              <label for="email">Email</label>
+              <input id="email" name="email" type="email" maxlength="254" autocomplete="email" aria-describedby="email-error">
+              <small id="email-error" class="field-error" aria-live="polite"></small>
+            </div>
             <label for="password">Password</label>
-            <input id="password" name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required>
+            <input id="password" name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" aria-describedby="password-error" required>
+            <small id="password-error" class="field-error" aria-live="polite"></small>
+            <div id="confirm-password-field" class="hidden">
+              <label for="confirm-password">Confirm password</label>
+              <input id="confirm-password" name="confirm_password" type="password" maxlength="128" autocomplete="new-password" aria-describedby="confirm-password-error">
+              <small id="confirm-password-error" class="field-error" aria-live="polite"></small>
+            </div>
             <button id="auth-submit" class="button button-primary auth-submit" type="submit">Sign in</button>
           </form>
           <p class="auth-switch"><span id="auth-switch-label">New to GreenPitch?</span> <button id="auth-toggle" class="text-button" type="button">Create an account</button></p>

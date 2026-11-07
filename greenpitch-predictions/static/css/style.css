@@ -238,6 +238,11 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 .auth-card > .muted { margin-bottom: 24px; font-size: 12px; }
 .auth-card label { display: block; margin: 15px 0 6px; color: var(--muted); font-size: 11px; }
 .auth-card input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: #171717; color: var(--text); }
+.auth-card input[aria-invalid="true"] { border-color: var(--red); }
+.field-error { display: block; min-height: 0; margin-top: 5px; color: var(--red); font-size: 11px; overflow-wrap: anywhere; }
+.field-error:empty { display: none; }
+.auth-card form > #signup-fields, .auth-card form > #confirm-password-field { display: contents; }
+.auth-card form > #signup-fields.hidden, .auth-card form > #confirm-password-field.hidden { display: none; }
 .auth-submit { width: 100%; margin-top: 22px; }
 .auth-switch { margin: 18px 0 0; color: var(--muted); text-align: center; font-size: 11px; }
 .text-button { padding: 0; border: 0; background: transparent; color: var(--green); cursor: pointer; font-size: inherit; }
