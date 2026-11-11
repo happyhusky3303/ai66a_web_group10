@@ -31,9 +31,9 @@ def test_registration_creates_user_and_authenticates_session(client):
     current = client.get("/auth/me").json()
     assert current == {
         "authenticated": True,
-        "user": {**response.json(), "points": 1500},
+        "user": response.json(),
         "daily_reward": {
-            "claimed": True,
+            "claimed": False,
             "points": 500,
             "day": auth.utc_today().isoformat(),
         },
@@ -44,45 +44,33 @@ def test_registration_creates_user_and_authenticates_session(client):
         assert user is not None
         assert user.password_hash != "Valid-password1!"
         assert verify_password("Valid-password1!", user.password_hash)
-        assert user.points == 1500
+        assert user.points == 1000
 
 
-def test_daily_reward_is_once_per_utc_day(client, monkeypatch):
-    registration = client.post(
-        "/auth/register",
-        json=signup_payload("reward_user"),
-    )
-    assert registration.status_code == 201
-    today = auth.utc_today()
 
-    first = client.get("/auth/me").json()
-    repeated = client.get("/auth/me").json()
-    assert first["daily_reward"]["claimed"] is True
-    assert first["user"]["points"] == 1500
-    assert repeated["daily_reward"]["claimed"] is False
-    assert repeated["user"]["points"] == 1500
-
-    next_day = today + timedelta(days=1)
-    monkeypatch.setattr(auth, "utc_today", lambda: next_day)
-    next_reward = client.get("/auth/me").json()
-    assert next_reward["daily_reward"]["claimed"] is True
-    assert next_reward["daily_reward"]["day"] == next_day.isoformat()
-    assert next_reward["user"]["points"] == 2000
-
-
-def test_daily_reward_is_awarded_on_first_authenticated_api_request(client):
-    registration = client.post(
-        "/auth/register",
-        json=signup_payload("api_reward_user"),
-    )
-    assert registration.status_code == 201
-
-    predictions = client.get("/api/my-predictions")
+def test_daily_gift_requires_claim_and_is_awarded_once_per_utc_day(client, monkeypatch):
+    assert client.post("/auth/daily-gift/claim").status_code == 401
+    assert client.post("/auth/register", json=signup_payload("gift_user")).status_code == 201
+    assert client.get("/api/my-predictions").status_code == 200
     current = client.get("/auth/me").json()
-
-    assert predictions.status_code == 200
-    assert current["user"]["points"] == 1500
+    assert current["user"]["points"] == 1000
     assert current["daily_reward"]["claimed"] is False
+
+    first = client.post("/auth/daily-gift/claim").json()
+    repeated = client.post("/auth/daily-gift/claim").json()
+    assert first["awarded"] is True
+    assert repeated["awarded"] is False
+    assert first["user"]["points"] == repeated["user"]["points"] == 1500
+    assert repeated["daily_reward"]["claimed"] is True
+    assert client.get("/auth/me").json()["daily_reward"]["claimed"] is True
+
+    next_day = auth.utc_today() + timedelta(days=1)
+    monkeypatch.setattr(auth, "utc_today", lambda: next_day)
+    available = client.get("/auth/me").json()
+    assert available["daily_reward"]["claimed"] is False
+    assert available["daily_reward"]["day"] == next_day.isoformat()
+    assert available["user"]["points"] == 1500
+    assert client.post("/auth/daily-gift/claim").json()["user"]["points"] == 2000
 
 
 @pytest.mark.parametrize(

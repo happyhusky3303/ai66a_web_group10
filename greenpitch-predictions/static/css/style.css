@@ -291,3 +291,23 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
   .match-data-fields { grid-template-columns: 1fr; }
   .footer { flex-direction: column; font-size: 8px; }
 }
+
+
+.daily-gift-trigger { padding: 6px 10px; min-height: 36px; font-size: 16px; }
+.daily-gift-dialog {
+  width: min(26rem, calc(100% - 2rem));
+  padding: 1.5rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  text-align: center;
+}
+.daily-gift-dialog::backdrop { background: rgb(0 0 0 / 70%); }
+.daily-gift-close { position: absolute; right: .65rem; top: .65rem; min-width: 2.25rem; padding: .35rem; }
+.daily-gift-icon { display: block; font-size: 2rem; }
+.daily-gift-balance { display: grid; gap: .25rem; margin: 1rem 0; }
+.daily-gift-balance strong { font-size: 2rem; color: var(--green); }
+.daily-gift-claim { width: 100%; }
+.daily-gift-claim:disabled { background: var(--background); color: var(--muted); cursor: default; opacity: 1; }
+#daily-gift-status:empty { display: none; }

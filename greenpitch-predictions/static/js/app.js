@@ -542,6 +542,125 @@ async function loadLeaderboard() {
 let currentUser = null;
 let myPredictionChoices = new Map();
 
+let dailyGift = null;
+let giftBusy = false;
+let giftBalanceRevision = 0;
+const promptedGiftDays = new Set();
+
+function renderDailyGift() {
+  const claim = document.querySelector("#daily-gift-claim");
+  if (!claim || !dailyGift || !currentUser) return;
+  document.querySelector("#daily-gift-description").textContent = dailyGift.claimed
+    ? "You’ve collected today’s gift."
+    : `Claim ${formatPoints(dailyGift.points)} bonus points.`;
+  document.querySelector("#daily-gift-points").textContent = formatPoints(currentUser.points);
+  claim.disabled = giftBusy || dailyGift.claimed;
+  claim.textContent = dailyGift.claimed ? "Come back tomorrow" : giftBusy ? "Please wait…" : "Claim";
+}
+
+function updateDailyGift(reward) {
+  dailyGift = currentUser && reward ? reward : null;
+  const trigger = document.querySelector("#daily-gift-button");
+  const dialog = document.querySelector("#daily-gift-dialog");
+  if (!trigger || !dialog) return;
+  trigger.classList.toggle("hidden", !dailyGift);
+  if (!dailyGift) {
+    if (dialog.open) dialog.close();
+    return;
+  }
+  renderDailyGift();
+  if (dailyGift.claimed) return;
+  const key = `greenpitch:daily-gift:${currentUser.id}:${dailyGift.day}`;
+  if (promptedGiftDays.has(key)) return;
+  try {
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, "shown");
+  } catch {
+    // The in-memory set still prevents repeated prompts on this page.
+  }
+  promptedGiftDays.add(key);
+  if (!dialog.open) dialog.showModal();
+}
+
+function animateGiftBalance(from, to) {
+  const balance = document.querySelector("#daily-gift-points");
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || from === to) {
+    balance.textContent = formatPoints(to);
+    return Promise.resolve();
+  }
+  return new Promise(resolve => {
+    const start = performance.now();
+    function frame(now) {
+      const progress = Math.min(1, (now - start) / 550);
+      balance.textContent = formatPoints(Math.round(from + (to - from) * progress));
+      if (progress < 1) requestAnimationFrame(frame);
+      else resolve();
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+function initDailyGift() {
+  const trigger = document.querySelector("#daily-gift-button");
+  const dialog = document.querySelector("#daily-gift-dialog");
+  const claim = document.querySelector("#daily-gift-claim");
+  const message = document.querySelector("#daily-gift-status");
+  if (!trigger || !dialog || !claim || !message) return;
+  trigger.addEventListener("click", async () => {
+    message.textContent = "";
+    if (!dialog.open) dialog.showModal();
+    if (giftBusy) return;
+    giftBusy = true;
+    renderDailyGift();
+    try {
+      const result = await apiRequest("/auth/me", { signal: AbortSignal.timeout(8000) });
+      if (!result.authenticated) {
+        dailyGift = null;
+        claim.disabled = true;
+        message.textContent = "Sign in again to claim your gift.";
+        return;
+      }
+      currentUser = result.user;
+      dailyGift = result.daily_reward;
+    } catch {
+      message.textContent = "Couldn’t check today’s gift. Close the panel and try again.";
+    } finally {
+      giftBusy = false;
+      renderDailyGift();
+    }
+  });
+  claim.addEventListener("click", async () => {
+    if (giftBusy || !dailyGift || dailyGift.claimed || !currentUser) return;
+    giftBusy = true;
+    message.textContent = "";
+    renderDailyGift();
+    try {
+      const previous = currentUser.points;
+      const result = await apiRequest("/auth/daily-gift/claim", {
+        method: "POST",
+        signal: AbortSignal.timeout(8000),
+      });
+      currentUser = result.user;
+      dailyGift = result.daily_reward;
+      giftBalanceRevision++;
+      for (const selector of ["#user-points", "#kpi-points"]) {
+        const balance = document.querySelector(selector);
+        if (balance) balance.textContent = formatPoints(currentUser.points);
+      }
+      updatePredictionControls();
+      if (result.awarded) {
+        await animateGiftBalance(previous, currentUser.points);
+        message.textContent = `+${formatPoints(dailyGift.points)} points added.`;
+      }
+    } catch (error) {
+      message.textContent = error.status === 401 ? "Sign in again to claim your gift." : "Couldn’t confirm your claim. You can try again.";
+    } finally {
+      giftBusy = false;
+      renderDailyGift();
+    }
+  });
+}
+
 async function loadCurrentUser({ signal, propagateError = false } = {}) {
   let loadError = null;
   let dailyReward;
@@ -572,16 +691,7 @@ async function loadCurrentUser({ signal, propagateError = false } = {}) {
       if (points) points.textContent = "—";
     }
   }
-  if (currentUser && dailyReward?.claimed) {
-    showNotice(
-      document.querySelector("#home-app-message")
-        || document.querySelector("#my-app-message")
-        || document.querySelector("#app-message")
-        || document.querySelector("#detail-message"),
-      `Daily reward collected: +${formatPoints(dailyReward.points)} points. Available balance: ${formatPoints(currentUser.points)} points.`,
-      "success",
-    );
-  }
+  updateDailyGift(dailyReward);
   if (loadError) {
     if (propagateError) throw loadError;
     showNotice(
@@ -790,7 +900,9 @@ async function initHome() {
       }
       const username = document.querySelector("#home-username");
       if (username) username.textContent = currentUser.username ? `, ${currentUser.username}` : "";
+      const balanceRevision = giftBalanceRevision;
       const data = await apiRequest("/api/my-matches", { signal: controller.signal });
+      if (balanceRevision !== giftBalanceRevision) data.user_points = currentUser.points;
       renderHomeAnalytics(data);
       dashboard.classList.remove("hidden");
       if (data.live_data_unavailable) showNotice(notice, "Showing saved results. Live match updates are temporarily unavailable.");
@@ -1112,10 +1224,11 @@ async function loadMyMatches() {
   table?.classList.remove("hidden");
 
   try {
+    const balanceRevision = giftBalanceRevision;
     const data = await apiRequest("/api/my-matches");
     myPredictionsData = data.predictions || [];
 
-    if (userPointsEl && data.user_points !== undefined) {
+    if (userPointsEl && data.user_points !== undefined && balanceRevision === giftBalanceRevision) {
       userPointsEl.textContent = formatPoints(data.user_points);
     }
 
@@ -1308,6 +1421,7 @@ function createMyMatchRow(item) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  initDailyGift();
   if (document.body.dataset.page === "home") initHome();
   if (document.body.dataset.page === "match-center") initMatchCenter();
   if (document.body.dataset.page === "match-detail") initMatchDetail();

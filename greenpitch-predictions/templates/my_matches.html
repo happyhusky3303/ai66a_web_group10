@@ -21,6 +21,7 @@
           <a class="nav-link active" href="/my-matches">My Matches</a>
           <span class="live-indicator"><span></span> LIVE DATA</span>
           <a id="auth-link" class="button button-quiet" href="/login">Sign in</a>
+          <button id="daily-gift-button" class="button button-quiet daily-gift-trigger hidden" type="button" aria-label="Daily gift" aria-haspopup="dialog" aria-controls="daily-gift-dialog"><span aria-hidden="true">🎁</span></button>
           <button id="logout-button" class="button button-quiet hidden" type="button">Sign out</button>
         </nav>
       </header>
@@ -122,5 +123,6 @@
         <span>POINTS ONLY · NO REAL-MONEY BETTING</span>
       </footer>
     </div>
+    {% include "_daily_gift.html" %}
   </body>
 </html>

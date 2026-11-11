@@ -98,8 +98,7 @@ def utc_today() -> date:
     return datetime.now(timezone.utc).date()
 
 
-def award_daily_reward(db: Session, user: User) -> bool:
-    today = utc_today()
+def award_daily_reward(db: Session, user: User, today: date) -> bool:
     result = db.execute(
         update(User)
         .where(
@@ -128,7 +127,6 @@ def get_current_user(request: Request, db: Annotated[Session, Depends(get_db)]) 
     if user is None or not user.is_active:
         request.session.clear()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Please sign in.")
-    award_daily_reward(db, user)
     return user
 
 
@@ -227,13 +225,26 @@ def current_user(request: Request, db: Annotated[Session, Depends(get_db)]) -> d
     if user is None or not user.is_active:
         request.session.clear()
         return {"authenticated": False}
-    reward_claimed = award_daily_reward(db, user)
+    return session_payload(user, utc_today())
+
+
+def session_payload(user: User, today: date) -> dict:
     return {
         "authenticated": True,
         "user": UserResponse.model_validate(user).model_dump(),
         "daily_reward": {
-            "claimed": reward_claimed,
+            "claimed": bool(user.last_daily_reward_date and user.last_daily_reward_date >= today),
             "points": DAILY_REWARD_POINTS,
-            "day": user.last_daily_reward_date.isoformat(),
+            "day": today.isoformat(),
         },
     }
+
+
+@router.post("/daily-gift/claim")
+def claim_daily_gift(
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    today = utc_today()
+    awarded = award_daily_reward(db, user, today)
+    return {**session_payload(user, today), "awarded": awarded}
