@@ -1,3 +1,4 @@
+from hashlib import sha256
 import logging
 import os
 import secrets
@@ -23,6 +24,10 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(PROJECT_DIR / "templates"))
+templates.env.globals["asset_version"] = sha256(
+    (PROJECT_DIR / "static/js/app.js").read_bytes()
+    + (PROJECT_DIR / "static/css/style.css").read_bytes()
+).hexdigest()[:12]
 session_secret = os.getenv("SESSION_SECRET_KEY")
 if not session_secret:
     session_secret = secrets.token_urlsafe(32)

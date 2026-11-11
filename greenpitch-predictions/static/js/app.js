@@ -66,7 +66,9 @@ async function apiRequest(url, options = {}) {
     } catch {
       // Keep the HTTP status message when the server response isn't JSON.
     }
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
   if (response.status === 204) return null;
   return response.json();
@@ -493,10 +495,10 @@ async function loadLeaderboard() {
 let currentUser = null;
 let myPredictionChoices = new Map();
 
-async function loadCurrentUser() {
+async function loadCurrentUser({ signal, propagateError = false } = {}) {
   let loadError = null;
   try {
-    const result = await apiRequest("/auth/me");
+    const result = await apiRequest("/auth/me", { signal });
     currentUser = result.authenticated ? result.user : null;
   } catch (error) {
     currentUser = null;
@@ -522,6 +524,7 @@ async function loadCurrentUser() {
     }
   }
   if (loadError) {
+    if (propagateError) throw loadError;
     showNotice(
       document.querySelector("#app-message")
         || document.querySelector("#my-app-message")
@@ -704,26 +707,54 @@ function renderHomeAnalytics(data) {
 
 async function initHome() {
   addLogoutHandler();
-  await loadCurrentUser();
   const loading = document.querySelector("#home-loading");
   const dashboard = document.querySelector("#home-dashboard");
   const authRequired = document.querySelector("#home-auth-required");
-  if (!currentUser) {
-    loading.classList.add("hidden");
-    authRequired.classList.remove("hidden");
-    return;
+  const notice = document.querySelector("#home-app-message") || document.createElement("div");
+  if (!notice.isConnected) (document.querySelector("main") || document.body).prepend(notice);
+  notice.setAttribute("role", "status");
+
+  async function loadDashboard() {
+    loading?.classList.remove("hidden");
+    dashboard?.classList.add("hidden");
+    authRequired?.classList.add("hidden");
+    hideNotice(notice);
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 12000);
+    try {
+      if (!dashboard || !authRequired) throw new Error("The dashboard page is incomplete. Reload the page and try again.");
+      await loadCurrentUser({ signal: controller.signal, propagateError: true });
+      if (!currentUser) {
+        authRequired.classList.remove("hidden");
+        return;
+      }
+      const username = document.querySelector("#home-username");
+      if (username) username.textContent = currentUser.username ? `, ${currentUser.username}` : "";
+      const data = await apiRequest("/api/my-matches", { signal: controller.signal });
+      renderHomeAnalytics(data);
+      dashboard.classList.remove("hidden");
+      if (data.live_data_unavailable) showNotice(notice, "Showing saved results. Live match updates are temporarily unavailable.");
+    } catch (error) {
+      if (error.status === 401 && authRequired) {
+        authRequired.classList.remove("hidden");
+        document.querySelector("#auth-link")?.classList.remove("hidden");
+        document.querySelector("#logout-button")?.classList.add("hidden");
+      } else {
+        showNotice(notice, controller.signal.aborted ? "The dashboard took too long to load." : error.message);
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "button button-quiet";
+        retry.textContent = "Retry dashboard";
+        retry.addEventListener("click", loadDashboard, { once: true });
+        notice.append(" ", retry);
+      }
+    } finally {
+      clearTimeout(deadline);
+      loading?.classList.add("hidden");
+    }
   }
 
-  document.querySelector("#home-username").textContent = `, ${currentUser.username}`;
-  try {
-    const data = await apiRequest("/api/my-matches");
-    renderHomeAnalytics(data);
-    dashboard.classList.remove("hidden");
-  } catch (error) {
-    showNotice(document.querySelector("#home-app-message"), error.message);
-  } finally {
-    loading.classList.add("hidden");
-  }
+  await loadDashboard();
 }
 
 function appendProviderFields(container, value, path = "") {

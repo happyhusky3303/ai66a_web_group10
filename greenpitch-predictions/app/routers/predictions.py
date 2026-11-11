@@ -1,4 +1,6 @@
+import asyncio
 import hmac
+import logging
 import os
 from typing import Annotated, Literal
 
@@ -16,6 +18,7 @@ from app.utils.rate_limit import limiter
 
 
 router = APIRouter(tags=["predictions"])
+logger = logging.getLogger(__name__)
 Winner = Literal["home", "away", "draw"]
 
 
@@ -122,7 +125,16 @@ async def get_my_matches(
         .order_by(Prediction.id.desc())
     ).all()
 
-    matches = await _fetch_matches()
+    if not predictions:
+        return {"predictions": [], "user_points": user.points}
+
+    live_data_unavailable = False
+    try:
+        matches = await asyncio.wait_for(_fetch_matches(), timeout=4)
+    except (HTTPException, asyncio.TimeoutError) as exc:
+        logger.warning("Live match enrichment unavailable: %s", getattr(exc, "detail", str(exc)) or "deadline exceeded")
+        matches = []
+        live_data_unavailable = True
     matches_by_id = {str(m["id"]): m for m in matches}
 
     results = []
@@ -215,6 +227,7 @@ async def get_my_matches(
     return {
         "predictions": results,
         "user_points": user.points,
+        "live_data_unavailable": live_data_unavailable,
     }
 
 
