@@ -30,7 +30,7 @@
           <div>
             <p class="eyebrow">USER DASHBOARD / BET HISTORY</p>
             <h1>My Matches</h1>
-            <p class="muted">Track all your active predictions, live progress, and earned points.</p>
+            <p class="muted">Track your active picks, stakes, payouts, and net point changes.</p>
           </div>
           <button id="my-refresh-button" class="button button-outline" type="button">Refresh</button>
         </section>
@@ -44,9 +44,9 @@
             </div>
             <div class="my-stats-grid">
               <div class="stat-box">
-                <span class="stat-caption">TOTAL POINTS</span>
+                <span class="stat-caption">AVAILABLE POINTS</span>
                 <p id="user-points" class="metric">—</p>
-                <p class="card-footnote">+100 correct · −100 incorrect</p>
+                <p class="card-footnote">Stakes are deducted when placed; wins pay 2× stake.</p>
               </div>
               <div class="stat-box">
                 <span class="stat-caption">TOTAL BETS</span>
@@ -107,7 +107,7 @@
                     <th scope="col">STATUS</th>
                     <th scope="col">MY PREDICTION</th>
                     <th scope="col">RESULT / SCORE</th>
-                    <th scope="col">POINTS</th>
+                    <th scope="col">NET POINTS</th>
                   </tr>
                 </thead>
                 <tbody id="my-matches-body"></tbody>

@@ -1,7 +1,7 @@
 # GreenPitch Football Predictions: Project Overview
 
 ## 1. Main Idea
-GreenPitch is a web-based football score prediction platform. Users can view upcoming football matches (fetched from a 3rd-party API), place predictions on the outcomes, and track their success on a global leaderboard. Correct predictions earn points, while incorrect ones lose points. 
+GreenPitch is a web-based football score prediction platform. Users can view upcoming football matches (fetched from a 3rd-party API), stake in-app points on match outcomes, and track their available balance and success on a global leaderboard.
 
 ## 2. Tech Stack
 *   **Backend:** Python with FastAPI.
@@ -12,9 +12,9 @@ GreenPitch is a web-based football score prediction platform. Users can view upc
 ## 3. Core Features
 1.  **Authentication:** User registration and login system.
 2.  **Match Listing:** Displaying matches categorized by status: Before (upcoming), Ongoing (live), Ended (completed with results).
-3.  **Prediction Engine:** Users predict a match winner (Home, Away, or Draw). 
-    *   Win = +100 points.
-    *   Loss = -100 points.
+3.  **Prediction Engine:** Users stake a positive number of available points on a match winner (Home, Away, or Draw).
+    *   The stake is deducted when the prediction is placed.
+    *   A win pays 2× the stake, for a net gain of one stake; a loss is not refunded.
     *   Predictions are locked once a match transitions to "Ongoing".
 4.  **Leaderboard:** A global ranking of all users based on their total points.
 

@@ -17,17 +17,19 @@ function renderPredictionQuota() {
     : `resets in ${Math.floor(resetSeconds / 60)}m ${String(resetSeconds % 60).padStart(2, "0")}s`;
 
   quota.textContent = `Predictions left: ${predictionQuotaResetAt === null ? "up to " : ""}${predictionQuotaRemaining} · ${resetText} · shared network`;
-  document.querySelectorAll(".choice-button, .prediction-option").forEach((button) => {
+  document.querySelectorAll(".choice-button").forEach((button) => {
     button.disabled = predictionQuotaRemaining === 0 || button.dataset.predictionSubmitted === "true";
   });
+  updatePredictionControls();
 
   if (resetSeconds === 0) {
     predictionQuotaRemaining = PREDICTION_LIMIT;
     predictionQuotaResetAt = null;
     quota.textContent = `Predictions left: up to ${PREDICTION_LIMIT} · resets every minute · shared network`;
-    document.querySelectorAll(".choice-button, .prediction-option").forEach((button) => {
+    document.querySelectorAll(".choice-button").forEach((button) => {
       button.disabled = button.dataset.predictionSubmitted === "true";
     });
+    updatePredictionControls();
     if (predictionQuotaTimer !== null) {
       window.clearInterval(predictionQuotaTimer);
       predictionQuotaTimer = null;
@@ -48,25 +50,60 @@ function updatePredictionQuota(headers) {
   }
 }
 
-async function apiRequest(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
-    },
+function updatePredictionControls() {
+  const stakeInput = document.querySelector("#prediction-stake");
+  if (!stakeInput) return;
+  const stake = Number(stakeInput.value);
+  const valid = Number.isSafeInteger(stake) && stake > 0 && currentUser && stake <= currentUser.points;
+  const preview = document.querySelector("#stake-preview");
+  const balance = document.querySelector("#prediction-balance");
+  if (balance && currentUser) balance.textContent = formatPoints(currentUser.points);
+  if (valid) {
+    preview.textContent = `Win: payout ${formatPoints(stake * 2)} pts (net +${formatPoints(stake)}); loss: −${formatPoints(stake)} pts.`;
+  } else {
+    preview.textContent = currentUser
+      ? "Enter a whole-number stake within your available balance."
+      : "Sign in to place a prediction.";
+  }
+  document.querySelectorAll(".prediction-option").forEach((button) => {
+    button.disabled = !valid
+      || predictionQuotaRemaining === 0
+      || button.dataset.predictionSubmitted === "true";
   });
+}
+
+async function apiRequest(url, options = {}) {
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...options.headers,
+      },
+    });
+  } catch {
+    throw new Error("Không thể kết nối tới máy chủ. Vui lòng kiểm tra mạng và thử lại.");
+  }
   if (url === "/api/predict") updatePredictionQuota(response.headers);
   if (!response.ok) {
     let message = `Request failed (${response.status}).`;
+    let body = {};
     try {
-      const body = await response.json();
-      if (typeof body.detail === "string") message = body.detail;
+      body = await response.json();
+      if (typeof body.message === "string") message = body.message;
+      else if (typeof body.detail === "string") message = body.detail;
+      else if (body.detail && typeof body.detail.message === "string") message = body.detail.message;
       else if (Array.isArray(body.detail)) message = body.detail.map((issue) => issue.msg).join(" ");
     } catch {
-      // Keep the HTTP status message when the server response isn't JSON.
+      // Use a generic HTTP message if the error response isn't valid JSON.
     }
-    const error = new Error(message);
+    const error = new Error(response.status >= 500
+      ? "Hệ thống đang bảo trì hoặc gặp sự cố. Vui lòng thử lại sau."
+      : message);
+    const fields = body.errors || body.detail?.errors;
+    error.code = body.code || body.detail?.code;
+    error.fields = Array.isArray(fields) ? fields : [];
     error.status = response.status;
     throw error;
   }
@@ -398,19 +435,21 @@ function createMatchRow(match) {
     points.className = "received-points";
     const label = document.createElement("span");
     label.className = "received-points-label";
-    label.textContent = "Points received";
     const result = document.createElement("strong");
     result.className = "received-points-value";
     if (prediction && !match.winner) {
       result.textContent = "Pending";
       result.classList.add("muted");
     } else {
-      const pointsReceived = prediction
-        ? prediction === match.winner ? 100 : -100
+      const netPoints = prediction
+        ? prediction.predicted_winner === match.winner
+          ? prediction.stake === null ? 100 : prediction.stake
+          : prediction.stake === null ? -100 : -prediction.stake
         : 0;
-      result.textContent = `${pointsReceived > 0 ? "+" : ""}${pointsReceived} pts`;
-      result.classList.add(pointsReceived > 0 ? "text-green" : pointsReceived < 0 ? "text-red" : "muted");
+      result.textContent = `${netPoints > 0 ? "+" : ""}${netPoints} pts`;
+      result.classList.add(netPoints > 0 ? "text-green" : netPoints < 0 ? "text-red" : "muted");
     }
+    label.textContent = "Net points";
     points.append(label, result);
     detailsCell.append(points);
   } else {
@@ -427,14 +466,23 @@ function createMatchRow(match) {
 
 async function submitPrediction(matchId, winner, button) {
   const notice = document.querySelector("#app-message") || document.querySelector("#detail-message");
+  const stakeInput = document.querySelector("#prediction-stake");
+  const stake = Number(stakeInput?.value);
+  if (!Number.isSafeInteger(stake) || stake <= 0 || !currentUser || stake > currentUser.points) {
+    showNotice(notice, "Enter a whole-number stake within your available points.");
+    return;
+  }
   const buttons = button.parentElement.querySelectorAll("button");
   buttons.forEach((choice) => { choice.disabled = true; });
+  if (stakeInput) stakeInput.disabled = true;
   hideNotice(notice);
   try {
-    await apiRequest("/api/predict", {
+    const result = await apiRequest("/api/predict", {
       method: "POST",
-      body: JSON.stringify({ user_id: currentUser.id, match_id: matchId, predicted_winner: winner }),
+      body: JSON.stringify({ user_id: currentUser.id, match_id: matchId, predicted_winner: winner, stake }),
     });
+    currentUser.points = result.user_points;
+    updatePredictionControls();
     buttons.forEach((choice) => { choice.dataset.predictionSubmitted = "true"; });
     renderPredictionQuota();
     if (document.body.dataset.page === "match-detail") {
@@ -447,16 +495,15 @@ async function submitPrediction(matchId, winner, button) {
           : null;
       predictionPanel.classList.add("hidden");
       locked.classList.remove("hidden");
-      locked.textContent = team ? `You predicted ${team} to win.` : "You predicted a draw.";
+      locked.textContent = `${team ? `You predicted ${team} to win` : "You predicted a draw"} with a ${formatPoints(stake)}-point stake. Available balance: ${formatPoints(currentUser.points)} pts.`;
       return;
     }
     showNotice(notice, "Prediction saved. You can only predict each match once.", "success");
     buttons.forEach((choice) => { choice.textContent = choice === button ? "✓" : "·"; });
   } catch (error) {
     showNotice(notice, error.message);
-    buttons.forEach((choice) => {
-      choice.disabled = predictionQuotaRemaining === 0 || choice.dataset.predictionSubmitted === "true";
-    });
+    if (stakeInput) stakeInput.disabled = false;
+    updatePredictionControls();
   }
 }
 
@@ -523,6 +570,16 @@ async function loadCurrentUser({ signal, propagateError = false } = {}) {
       if (points) points.textContent = "—";
     }
   }
+  if (currentUser && result.daily_reward?.claimed) {
+    showNotice(
+      document.querySelector("#home-app-message")
+        || document.querySelector("#my-app-message")
+        || document.querySelector("#app-message")
+        || document.querySelector("#detail-message"),
+      `Daily reward collected: +${formatPoints(result.daily_reward.points)} points. Available balance: ${formatPoints(currentUser.points)} points.`,
+      "success",
+    );
+  }
   if (loadError) {
     if (propagateError) throw loadError;
     showNotice(
@@ -564,7 +621,7 @@ async function initMatchCenter() {
       const data = await apiRequest("/api/my-predictions");
       predictedMatchIds = new Set(data.predictions.map((item) => String(item.match_id)));
       myPredictionChoices = new Map(
-        data.predictions.map((item) => [String(item.match_id), item.predicted_winner]),
+        data.predictions.map((item) => [String(item.match_id), item]),
       );
       document.querySelector("#show-predicted-control")?.classList.remove("hidden");
     } catch (error) {
@@ -699,7 +756,8 @@ function renderHomeAnalytics(data) {
     detail.textContent = `${item.predicted_label} pick · ${item.status}`;
     const result = document.createElement("strong");
     result.className = item.won === true ? "text-green" : item.won === false ? "text-red" : "muted";
-    result.textContent = item.points_awarded === null ? "Pending" : `${item.points_awarded > 0 ? "+" : ""}${item.points_awarded} pts`;
+    const netPoints = item.net_points ?? item.points_awarded;
+    result.textContent = netPoints === null ? "Pending" : `${netPoints > 0 ? "+" : ""}${netPoints} pts`;
     row.append(matchup, detail, result);
     recent.append(row);
   }
@@ -858,15 +916,18 @@ async function initMatchDetail() {
       locked.textContent = "Your prediction could not be verified. Refresh the page before trying again.";
     } else if (status === "Before" && currentUser) {
       const panel = document.querySelector("#detail-prediction-choices");
+      const stakeInput = document.querySelector("#prediction-stake");
+      stakeInput.max = String(currentUser.points);
+      stakeInput.addEventListener("input", updatePredictionControls);
       for (const [outcome, label] of [["home", match.home_team], ["draw", "Draw"], ["away", match.away_team]]) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "button prediction-option";
-        button.disabled = predictionQuotaRemaining === 0;
         button.textContent = label;
         button.addEventListener("click", () => submitPrediction(match.id, outcome, button));
         panel.append(button);
       }
+      updatePredictionControls();
       document.querySelector("#prediction-quota").classList.remove("hidden");
     } else {
       predictionPanel.classList.add("hidden");
@@ -902,39 +963,95 @@ async function initMatchDetail() {
 function initAuthPage() {
   const form = document.querySelector("#auth-form");
   const toggle = document.querySelector("#auth-toggle");
+  const submit = document.querySelector("#auth-submit");
+  const message = document.querySelector("#auth-message");
+  const username = document.querySelector("#username");
+  const password = document.querySelector("#password");
+  const email = document.querySelector("#email");
+  const confirmPassword = document.querySelector("#confirm-password");
+  const signupFields = document.querySelector("#signup-fields");
+  const confirmField = document.querySelector("#confirm-password-field");
   let registering = false;
+  let submitting = false;
+
+  const fieldError = (name) => document.querySelector(`#${name}-error`);
+  const setFieldError = (name, text) => {
+    const input = document.querySelector(`#${name === "confirm_password" ? "confirm-password" : name}`);
+    const output = fieldError(name === "confirm_password" ? "confirm-password" : name);
+    if (output) output.textContent = text || "";
+    input?.setAttribute("aria-invalid", text ? "true" : "false");
+  };
+  const clearFieldErrors = () => ["username", "email", "password", "confirm-password"].forEach((name) => setFieldError(name, ""));
+
+  const validate = () => {
+    clearFieldErrors();
+    let valid = true;
+    const usernameValue = username.value.trim();
+    if (!usernameValue) { setFieldError("username", "Tên đăng nhập không được để trống."); valid = false; }
+    else if (registering && !/^[A-Za-z0-9_]{3,30}$/.test(usernameValue)) { setFieldError("username", "Username phải từ 3 đến 30 ký tự và chỉ gồm chữ cái, số hoặc dấu gạch dưới."); valid = false; }
+    else if (!registering && usernameValue.length < 3) { setFieldError("username", "Nhập username hoặc email hợp lệ."); valid = false; }
+    if (registering) {
+      if (!email.value.trim()) { setFieldError("email", "Email không được để trống."); valid = false; }
+      else if (!email.validity.valid) { setFieldError("email", "Email không đúng định dạng."); valid = false; }
+      if (!password.value) { setFieldError("password", "Mật khẩu không được để trống."); valid = false; }
+      else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,128}$/.test(password.value)) { setFieldError("password", "Mật khẩu phải từ 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt."); valid = false; }
+      if (!confirmPassword.value) { setFieldError("confirm-password", "Vui lòng nhập lại mật khẩu."); valid = false; }
+      else if (confirmPassword.value !== password.value) { setFieldError("confirm-password", "Mật khẩu nhập lại không khớp."); valid = false; }
+    } else if (!password.value) { setFieldError("password", "Mật khẩu không được để trống."); valid = false; }
+    return valid;
+  };
+
+  form.querySelectorAll("input").forEach((input) => input.addEventListener("input", () => {
+    setFieldError(input.name === "confirm_password" ? "confirm-password" : input.name, "");
+    hideNotice(message);
+  }));
+
   toggle.addEventListener("click", () => {
+    if (submitting) return;
     registering = !registering;
     document.querySelector("#auth-heading").textContent = registering ? "Create your account" : "Welcome back";
     document.querySelector("#auth-description").textContent = registering
       ? "Join the match center. Your account starts with 1,000 points."
       : "Sign in to submit predictions and follow your points.";
     document.querySelector("#auth-submit").textContent = registering ? "Create account" : "Sign in";
+    document.querySelector("#username-label").textContent = registering ? "Username" : "Username or email";
+    signupFields.classList.toggle("hidden", !registering);
+    confirmField.classList.toggle("hidden", !registering);
+    email.required = registering;
+    confirmPassword.required = registering;
+    username.maxLength = registering ? 30 : 254;
+    username.minLength = registering ? 3 : 3;
     document.querySelector("#auth-switch-label").textContent = registering ? "Already have an account?" : "New to GreenPitch?";
     toggle.textContent = registering ? "Sign in" : "Create an account";
     document.querySelector("#password").autocomplete = registering ? "new-password" : "current-password";
     hideNotice(document.querySelector("#auth-message"));
+    clearFieldErrors();
   });
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const submit = document.querySelector("#auth-submit");
-    const message = document.querySelector("#auth-message");
+    if (submitting || !validate()) return;
+    submitting = true;
     submit.disabled = true;
     submit.textContent = registering ? "Creating account…" : "Signing in…";
     hideNotice(message);
-    const formData = new FormData(form);
+    const payload = registering
+      ? { username: username.value.trim(), email: email.value.trim(), password: password.value, confirm_password: confirmPassword.value }
+      : { username: username.value.trim(), password: password.value };
     try {
       await apiRequest(registering ? "/auth/register" : "/auth/login", {
         method: "POST",
-        body: JSON.stringify({
-          username: formData.get("username"),
-          password: formData.get("password"),
-        }),
+        body: JSON.stringify(payload),
       });
       window.location.assign("/");
     } catch (error) {
-      showNotice(message, error.message);
+      if (error.fields?.length) {
+        for (const issue of error.fields) setFieldError(issue.field, issue.message);
+        if (error.code === "VALIDATION_ERROR") showNotice(message, "Vui lòng kiểm tra lại các trường được đánh dấu.");
+        else showNotice(message, error.message);
+      } else showNotice(message, error.message);
+    } finally {
+      submitting = false;
       submit.disabled = false;
       submit.textContent = registering ? "Create account" : "Sign in";
     }
@@ -1119,6 +1236,12 @@ function createMyMatchRow(item) {
   const teamText = document.createElement("span");
   teamText.textContent = item.predicted_team;
   badge.append(labelStrong, teamText);
+  if (item.stake !== null && item.stake !== undefined) {
+    const stakeText = document.createElement("small");
+    stakeText.className = "muted";
+    stakeText.textContent = `Stake: ${formatPoints(item.stake)} pts`;
+    badge.append(stakeText);
+  }
   predCell.append(badge);
 
   // Col 5: Result / Score
@@ -1152,7 +1275,7 @@ function createMyMatchRow(item) {
     resultCell.textContent = "—";
   }
 
-  // Col 6: Points Received / Lost
+  // Col 6: Net Points
   const pointsCell = document.createElement("td");
   pointsCell.className = "points-cell";
   if (item.status === "Before" || item.status === "Ongoing") {
@@ -1160,14 +1283,15 @@ function createMyMatchRow(item) {
     pendingSpan.className = "mono muted";
     pendingSpan.textContent = "—";
     pointsCell.append(pendingSpan);
-  } else if (item.points_awarded !== null) {
+  } else if ((item.net_points ?? item.points_awarded) !== null) {
+    const netPoints = item.net_points ?? item.points_awarded;
     const pointsPill = document.createElement("span");
-    if (item.points_awarded > 0) {
+    if (netPoints > 0) {
       pointsPill.className = "points-pill points-pill-won mono";
-      pointsPill.textContent = `+${item.points_awarded} pts`;
-    } else if (item.points_awarded < 0) {
+      pointsPill.textContent = `+${netPoints} pts`;
+    } else if (netPoints < 0) {
       pointsPill.className = "points-pill points-pill-lost mono";
-      pointsPill.textContent = `${item.points_awarded} pts`;
+      pointsPill.textContent = `${netPoints} pts`;
     } else {
       pointsPill.className = "points-pill points-pill-pending mono";
       pointsPill.textContent = "0 pts";
