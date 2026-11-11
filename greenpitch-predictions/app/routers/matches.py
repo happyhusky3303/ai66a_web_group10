@@ -3,10 +3,16 @@ import logging
 import os
 import time
 from datetime import date, timedelta
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models import SimulatedMatch
+from app.simulated_matches import get_simulated_match, simulated_fixture
 
 from app.utils.rate_limit import limiter
 
@@ -190,10 +196,21 @@ async def _fetch_matches() -> list[dict[str, Any]]:
 
 @router.get("/matches")
 @limiter.limit("20/minute")
-async def list_matches(request: Request, response: Response) -> dict[str, Any]:
-    matches = await _fetch_matches()
+async def list_matches(request: Request, response: Response, db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
+    simulated = [simulated_fixture(item) for item in db.scalars(select(SimulatedMatch))]
+    live_data_unavailable = False
+    try:
+        matches = await asyncio.wait_for(_fetch_matches(), timeout=4) if simulated else await _fetch_matches()
+    except (HTTPException, asyncio.TimeoutError):
+        if not simulated:
+            raise
+        matches = []
+        live_data_unavailable = True
+    if simulated:
+        matches = sorted([*matches, *simulated], key=lambda item: (item.get("utc_date") or "", item["id"]))
     return {
         "matches": matches,
+        **({"live_data_unavailable": live_data_unavailable} if simulated else {}),
         "fetched_at": _cache_fetched_at,
         "cache_ttl_seconds": CACHE_TTL_SECONDS,
     }
@@ -201,7 +218,12 @@ async def list_matches(request: Request, response: Response) -> dict[str, Any]:
 
 @router.get("/matches/{match_id}")
 @limiter.limit("20/minute")
-async def get_match(match_id: str, request: Request, response: Response) -> dict[str, Any]:
+async def get_match(match_id: str, request: Request, response: Response, db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
+    if match_id.startswith("sim-"):
+        simulated = get_simulated_match(db, match_id)
+        if simulated is None:
+            raise HTTPException(status_code=404, detail="Match was not found in the current fixtures.")
+        return simulated_fixture(simulated)
     matches = await _fetch_matches()
     match = next((item for item in matches if item["id"] == match_id), None)
     if match is None:

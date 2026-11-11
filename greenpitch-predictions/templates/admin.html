@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="admin-csrf" content="{{ csrf_token }}">
+  <title>{{ title }} — GreenPitch</title>
+  <link rel="stylesheet" href="/static/css/style.css?v={{ asset_version }}">
+  <script src="/static/js/app.js?v={{ asset_version }}" defer></script>
+  <script src="/static/js/admin.js?v={{ asset_version }}" defer></script>
+</head>
+<body data-page="{{ page }}">
+  <div class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="GreenPitch home">
+        <span class="brand-mark" aria-hidden="true">G</span>
+        <span>GreenPitch<span class="brand-caption">MATCH INTELLIGENCE</span></span>
+      </a>
+      <nav class="top-nav" aria-label="Main navigation">
+        <a class="nav-link" href="/">Home</a>
+        <a class="nav-link" href="/match-center">Match Center</a>
+        <a class="nav-link" href="/my-matches">My Matches</a>
+        {% include "_admin_links.html" %}
+        <button id="logout-button" class="button button-quiet" type="button">Sign out</button>
+      </nav>
+    </header>
+    <main class="admin-page">
+      <section class="page-heading">
+        <div>
+          <h1>{{ title }}</h1>
+          <p class="muted">{{ "Publish simulated fixtures and enter final scores." if page == "create-match" else "Manage account access and adjust available points." }}</p>
+        </div>
+      </section>
+      <p id="admin-message" class="notice hidden" role="status" aria-live="polite"></p>
+      {% if page == "create-match" %}
+      <section class="card admin-card" aria-labelledby="publish-heading">
+        <h2 id="publish-heading">Publish a fixture</h2>
+        <form id="publish-match" class="admin-form">
+          <label>Home team<input class="select-input" name="home_team" maxlength="128" required></label>
+          <label>Away team<input class="select-input" name="away_team" maxlength="128" required></label>
+          <label>Competition<input class="select-input" name="competition" maxlength="128" required></label>
+          <label>Kick-off (local time)<input class="select-input" type="datetime-local" name="kickoff" required></label>
+          <button class="button button-primary" type="submit">Publish match</button>
+        </form>
+      </section>
+      <section class="card admin-card" aria-labelledby="fixtures-heading">
+        <div class="admin-card-heading">
+          <h2 id="fixtures-heading">Simulated fixtures</h2>
+          <button id="refresh-fixtures" type="button" class="button button-quiet">Refresh</button>
+        </div>
+        <div id="admin-fixtures" class="admin-records" aria-live="polite"></div>
+      </section>
+      {% else %}
+      <section class="card admin-card" aria-labelledby="accounts-heading">
+        <h2 id="accounts-heading">Accounts</h2>
+        <form id="search-users" class="admin-search">
+          <label for="user-query">Username or email</label>
+          <input class="select-input" id="user-query" name="query" type="search" maxlength="254">
+          <button class="button button-quiet" type="submit">Search</button>
+        </form>
+        <div id="admin-users" class="admin-records" aria-live="polite"></div>
+        <nav class="admin-pagination" aria-label="Account pages">
+          <button class="button button-quiet" id="previous-users" type="button" disabled>Previous</button>
+          <span id="user-page">Page 1</span>
+          <button class="button button-quiet" id="next-users" type="button" disabled>Next</button>
+        </nav>
+      </section>
+      <dialog id="account-dialog" class="daily-gift-dialog admin-account-dialog" aria-labelledby="account-title">
+        <h2 id="account-title"></h2>
+        <p id="account-balance" class="muted"></p>
+        <form id="change-account" class="admin-form">
+          <label>Action
+            <select class="select-input" name="action">
+              <option value="points">Adjust points</option>
+              <option value="status" id="account-status-option"></option>
+              <option value="unlock">Unlock sign-in</option>
+            </select>
+          </label>
+          <label id="point-adjustment">Points to add or deduct
+            <input class="select-input" name="delta" type="number" step="1" min="-2147483647" max="2147483647" required>
+          </label>
+          <p id="account-preview" class="muted" aria-live="polite"></p>
+          <label>Reason<textarea class="select-input" name="reason" maxlength="500" rows="3" required></textarea></label>
+          <p id="account-error" class="hidden notice" role="alert"></p>
+          <div class="admin-pagination">
+            <button class="button button-quiet" id="cancel-account" type="button">Cancel</button>
+            <button class="button button-primary" type="submit">Apply change</button>
+          </div>
+        </form>
+      </dialog>
+      {% endif %}
+    </main>
+  </div>
+</body>
+</html>

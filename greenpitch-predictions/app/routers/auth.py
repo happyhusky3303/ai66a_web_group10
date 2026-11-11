@@ -231,6 +231,7 @@ def current_user(request: Request, db: Annotated[Session, Depends(get_db)]) -> d
 def session_payload(user: User, today: date) -> dict:
     return {
         "authenticated": True,
+        "is_admin": user.is_admin,
         "user": UserResponse.model_validate(user).model_dump(),
         "daily_reward": {
             "claimed": bool(user.last_daily_reward_date and user.last_daily_reward_date >= today),

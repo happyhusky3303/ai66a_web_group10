@@ -31,6 +31,9 @@ python -m pytest
 
 Tests use a temporary SQLite database and mock football-data.org responses, so
 they do not require a provider API token, PostgreSQL, or network access.
+To run the admin tests on PostgreSQL, set `GREENPITCH_TEST_POSTGRES_URL` to a
+`postgresql+psycopg://` URL for a disposable test database and run
+`python -m pytest tests/test_admin.py`. Each test uses a temporary schema.
 
 Set the environment variables and start the development server:
 
@@ -95,6 +98,36 @@ In the `PORTS` column, confirm that `8000` is mapped to host port `8000`
 
 For production behind HTTPS, set `SESSION_HTTPS_ONLY=true` in `.env`.
 
+## Admin setup
+
+Back up the app database before upgrading. Start GreenPitch once against that
+database to apply the startup schema updates. Register the account through the
+regular sign-up flow, then run the following from the app environment using the
+same database configuration as the server:
+
+```powershell
+python -m app.admin_cli grant exact_username
+python -m app.admin_cli revoke exact_username
+```
+
+For Docker Compose, run the command inside the app container. After granting
+access, sign in or refresh the page to see **Create Match** and **User Management**.
+Revocation takes effect on the next admin request. Use HTTPS with
+`SESSION_HTTPS_ONLY=true` in deployed environments.
+
+- **Create Match** publishes a simulated fixture. Users can stake shared points
+  until kick-off. Refresh the fixture list after kick-off, enter both scores,
+  and confirm the final score to settle predictions. The score is permanent
+  and the same result can be safely retried. Simulated payouts affect the
+  shared leaderboard. Admin accounts cannot predict simulated matches.
+- **User Management** searches regular accounts by username or email. Admins
+  can deactivate or reactivate accounts, clear sign-in lockouts, and apply a
+  signed points adjustment. Each change requires a reason and is recorded in
+  the database with the actor, target, timestamp, and before/after values.
+- The browser API is under `/api/admin`. Its writes require a signed-in admin
+  and an `X-CSRF-Token` from an admin page. The separate token-protected
+  `POST /admin/resolve` continues to handle provider match settlement.
+
 ## API
 
 - `/` — personal analytics dashboard (sign-in required for account metrics)
@@ -123,9 +156,8 @@ prediction receives no refund. Existing predictions created before this change
 have no recorded stake and retain the prior +100/−100 settlement rule. The
 database migration leaves existing balances and predictions unchanged.
 
-On the first authenticated app visit each UTC calendar day, users automatically
-receive 500 points. The reward is credited once per UTC date, including during
-the first authenticated API request if a user bypasses the normal page flow.
+Users can claim a 500-point gift once per UTC date through the Daily Gift panel.
+The balance increases when the authenticated claim succeeds.
 
 ## Rate limits
 

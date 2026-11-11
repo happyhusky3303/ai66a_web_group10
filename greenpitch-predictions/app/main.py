@@ -5,20 +5,22 @@ import secrets
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Annotated, AsyncIterator
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import http_exception_handler as fastapi_http_exception_handler
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.database import Base, engine
-from app.routers import auth, matches, predictions
+from sqlalchemy.orm import Session
+
+from app.database import Base, engine, get_db
+from app.routers import admin, auth, matches, predictions
 from app.utils.rate_limit import limiter
 
 
@@ -29,6 +31,7 @@ templates = Jinja2Templates(directory=str(PROJECT_DIR / "templates"))
 templates.env.globals["asset_version"] = sha256(
     (PROJECT_DIR / "static/js/app.js").read_bytes()
     + (PROJECT_DIR / "static/css/style.css").read_bytes()
+    + (PROJECT_DIR / "static/js/admin.js").read_bytes()
 ).hexdigest()[:12]
 session_secret = os.getenv("SESSION_SECRET_KEY")
 if not session_secret:
@@ -65,6 +68,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             ("failed_login_attempts", "INTEGER NOT NULL DEFAULT 0"),
             ("locked_until", datetime_type),
             ("is_active", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("is_admin", "BOOLEAN NOT NULL DEFAULT FALSE"),
             ("last_daily_reward_date", "DATE"),
         ]:
             if col not in existing_columns:
@@ -153,6 +157,7 @@ app.mount("/static", StaticFiles(directory=str(PROJECT_DIR / "static")), name="s
 app.include_router(auth.router)
 app.include_router(matches.router)
 app.include_router(predictions.router)
+app.include_router(admin.router)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -178,3 +183,28 @@ def login_page(request: Request) -> HTMLResponse:
 @app.get("/my-matches", response_class=HTMLResponse, include_in_schema=False)
 def my_matches_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request=request, name="my_matches.html")
+
+
+def render_admin_page(request: Request, db: Session, page: str, title: str) -> Response:
+    try:
+        admin.require_admin(auth.get_current_user(request, db))
+    except HTTPException as exc:
+        if exc.status_code == 401:
+            return RedirectResponse("/login", status_code=303)
+        raise
+    token = request.session.setdefault("admin_csrf", secrets.token_urlsafe(32))
+    return templates.TemplateResponse(
+        request=request, name="admin.html",
+        context={"page": page, "title": title, "csrf_token": token},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/admin/create-match", response_class=HTMLResponse, include_in_schema=False)
+def create_match_page(request: Request, db: Annotated[Session, Depends(get_db)]) -> Response:
+    return render_admin_page(request, db, "create-match", "Create Match")
+
+
+@app.get("/admin/users", response_class=HTMLResponse, include_in_schema=False)
+def user_management_page(request: Request, db: Annotated[Session, Depends(get_db)]) -> Response:
+    return render_admin_page(request, db, "users", "User Management")

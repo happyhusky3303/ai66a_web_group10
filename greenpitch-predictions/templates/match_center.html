@@ -20,6 +20,7 @@
           <a class="nav-link active" href="/match-center">Match Center</a>
           <a class="nav-link" href="/my-matches">My Matches</a>
           <span class="live-indicator"><span></span> LIVE DATA</span>
+          {% include "_admin_links.html" %}
           <a id="auth-link" class="button button-quiet" href="/login">Sign in</a>
           <button id="daily-gift-button" class="button button-quiet daily-gift-trigger hidden" type="button" aria-label="Daily gift" aria-haspopup="dialog" aria-controls="daily-gift-dialog"><span aria-hidden="true">🎁</span></button>
           <button id="logout-button" class="button button-quiet hidden" type="button">Sign out</button>
@@ -45,6 +46,7 @@
                   <option value="all">All matches</option>
                   <option value="ongoing">Ongoing</option>
                   <option value="upcoming">Upcoming</option>
+                  <option value="awaiting">Awaiting result</option>
                   <option value="ended">Ended</option>
                 </select>
                 <select id="match-league-filter" class="select-input" aria-label="Filter matches by league">
@@ -100,6 +102,20 @@
                 <table class="match-table">
                   <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">RESULT / POINTS</th></tr></thead>
                   <tbody id="upcoming-matches-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="match-group hidden" id="awaiting-group">
+              <div class="group-heading">
+                <h3>Awaiting Result</h3>
+                <span id="awaiting-count" class="count-label"></span>
+              </div>
+              <div id="awaiting-empty" class="empty-state hidden">No simulated matches are awaiting a result.</div>
+              <div class="table-wrap">
+                <table class="match-table">
+                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">RESULT / POINTS</th></tr></thead>
+                  <tbody id="awaiting-matches-body"></tbody>
                 </table>
               </div>
             </div>

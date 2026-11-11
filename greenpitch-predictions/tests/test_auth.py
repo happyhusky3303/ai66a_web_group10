@@ -31,6 +31,7 @@ def test_registration_creates_user_and_authenticates_session(client):
     current = client.get("/auth/me").json()
     assert current == {
         "authenticated": True,
+        "is_admin": False,
         "user": response.json(),
         "daily_reward": {
             "claimed": False,
@@ -76,22 +77,23 @@ def test_daily_gift_requires_claim_and_is_awarded_once_per_utc_day(client, monke
 @pytest.mark.parametrize(
     ("username", "password"),
     [
-        ("ab", "valid-password"),
-        ("invalid name", "valid-password"),
+        ("ab", "Valid-password1!"),
+        ("invalid name", "Valid-password1!"),
         ("valid_user", "short"),
     ],
 )
 def test_registration_rejects_invalid_credentials(client, username, password):
     response = client.post(
         "/auth/register",
-        json={"username": username, "password": password},
+        json={**signup_payload("valid_user"), "username": username, "password": password, "confirm_password": password},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 400
+    assert response.json()["code"] == "VALIDATION_ERROR"
 
 
 def test_duplicate_registration_is_rejected(client):
-    credentials = {"username": "green_pitch", "password": "valid-password"}
+    credentials = signup_payload("green_pitch")
     assert client.post("/auth/register", json=credentials).status_code == 201
 
     response = client.post("/auth/register", json=credentials)
@@ -100,11 +102,11 @@ def test_duplicate_registration_is_rejected(client):
 
 
 def test_login_logout_and_current_user(client):
-    credentials = {"username": "green_pitch", "password": "valid-password"}
+    credentials = signup_payload("green_pitch")
     client.post("/auth/register", json=credentials)
     client.post("/auth/logout")
 
-    login_response = client.post("/auth/login", json=credentials)
+    login_response = client.post("/auth/login", json={"username": credentials["username"], "password": credentials["password"]})
     assert login_response.status_code == 200
     assert client.get("/auth/me").json()["authenticated"] is True
 
@@ -116,7 +118,7 @@ def test_login_logout_and_current_user(client):
 def test_login_rejects_incorrect_password(client):
     client.post(
         "/auth/register",
-        json={"username": "green_pitch", "password": "valid-password"},
+        json=signup_payload("green_pitch"),
     )
 
     response = client.post(

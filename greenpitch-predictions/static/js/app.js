@@ -132,6 +132,7 @@ async function loadMatches() {
   const ongoingBody = document.querySelector("#ongoing-matches-body");
   const upcomingBody = document.querySelector("#upcoming-matches-body");
   const endedBody = document.querySelector("#ended-matches-body");
+  const awaitingBody = document.querySelector("#awaiting-matches-body");
 
   const ongoingEmpty = document.querySelector("#ongoing-empty");
   const upcomingEmpty = document.querySelector("#upcoming-empty");
@@ -146,11 +147,14 @@ async function loadMatches() {
   ongoingBody?.replaceChildren();
   upcomingBody?.replaceChildren();
   endedBody?.replaceChildren();
+  awaitingBody?.replaceChildren();
+  document.querySelector("#awaiting-group")?.classList.add("hidden");
   hideNotice(notice);
 
   try {
     const data = await apiRequest("/api/matches", { signal: AbortSignal.timeout(15000) });
     const matches = data.matches || [];
+    if (data.live_data_unavailable) showNotice(notice, "Live fixtures are temporarily unavailable. Showing simulated matches.");
     count.textContent = `${matches.length} fixture${matches.length === 1 ? "" : "s"}`;
     if (matches.length === 0) empty.classList.remove("hidden");
 
@@ -165,6 +169,8 @@ async function loadMatches() {
         ongoing.push(match);
       } else if (match.status === "Before") {
         upcoming.push(match);
+      } else if (match.status === "Awaiting result") {
+        awaitingBody?.append(createMatchRow(match));
       } else {
         ended.push(match);
       }
@@ -250,6 +256,14 @@ function applyMatchFilter() {
       defaultEmptyText: "No upcoming fixtures scheduled.",
     },
     {
+      key: "awaiting",
+      element: document.querySelector("#awaiting-group"),
+      countEl: document.querySelector("#awaiting-count"),
+      emptyEl: document.querySelector("#awaiting-empty"),
+      suffix: "pending",
+      defaultEmptyText: "No simulated matches are awaiting a result.",
+    },
+    {
       key: "ended",
       element: endedGroup,
       countEl: document.querySelector("#ended-count"),
@@ -264,7 +278,8 @@ function applyMatchFilter() {
   for (const { key, element, countEl, emptyEl, suffix, defaultEmptyText } of groups) {
     if (!element) continue;
 
-    const isGroupTypeVisible = selectedType === "all" || selectedType === key;
+    const isGroupTypeVisible = selectedType === key || (selectedType === "all"
+      && (key !== "awaiting" || element.querySelector("tbody tr")));
     if (!isGroupTypeVisible) {
       element.classList.add("hidden");
       continue;
@@ -398,7 +413,7 @@ function createMatchRow(match) {
   matchCell.className = "match-cell";
   const competition = document.createElement("span");
   competition.className = "competition-name";
-  competition.textContent = match.competition;
+  competition.textContent = match.source === "simulated" ? match.competition + " · Simulated" : match.competition;
   const isEnded = match.status === "Ended";
   const resultText = isEnded
     ? typeof match.home_score === "number" && typeof match.away_score === "number"
@@ -422,7 +437,7 @@ function createMatchRow(match) {
 
   const statusCell = document.createElement("td");
   const status = document.createElement("span");
-  const statusClass = match.status.toLowerCase();
+  const statusClass = match.status.toLowerCase().replaceAll(" ", "-");
   status.className = `status status-${statusClass}`;
   status.textContent = match.status;
   statusCell.append(status);
@@ -540,6 +555,7 @@ async function loadLeaderboard() {
 }
 
 let currentUser = null;
+let currentUserIsAdmin = false;
 let myPredictionChoices = new Map();
 
 let dailyGift = null;
@@ -667,9 +683,11 @@ async function loadCurrentUser({ signal, propagateError = false } = {}) {
   try {
     const result = await apiRequest("/auth/me", { signal });
     currentUser = result.authenticated ? result.user : null;
+    currentUserIsAdmin = Boolean(result.authenticated && result.is_admin);
     dailyReward = result.daily_reward;
   } catch (error) {
     currentUser = null;
+    currentUserIsAdmin = false;
     loadError = error;
   }
   const authLink = document.querySelector("#auth-link");
@@ -691,6 +709,7 @@ async function loadCurrentUser({ signal, propagateError = false } = {}) {
       if (points) points.textContent = "—";
     }
   }
+  document.querySelectorAll("[data-admin-link]").forEach(link => link.classList.toggle("hidden", !currentUserIsAdmin));
   updateDailyGift(dailyReward);
   if (loadError) {
     if (propagateError) throw loadError;
@@ -712,6 +731,7 @@ function addLogoutHandler() {
     } catch (error) {
       showNotice(
         document.querySelector("#app-message")
+          || document.querySelector("#admin-message")
           || document.querySelector("#home-app-message")
           || document.querySelector("#detail-message"),
         error.message,
@@ -776,7 +796,7 @@ function renderHomeAnalytics(data) {
   const resolved = predictions.filter((item) => item.won === true || item.won === false);
   const won = resolved.filter((item) => item.won).length;
   const lost = resolved.length - won;
-  const active = predictions.filter((item) => item.status === "Before" || item.status === "Ongoing").length;
+  const active = predictions.filter((item) => ["Before", "Ongoing", "Awaiting result"].includes(item.status)).length;
   const earned = resolved.reduce((sum, item) => sum + Math.max(item.points_awarded || 0, 0), 0);
   const lostPoints = resolved.reduce((sum, item) => sum + Math.abs(Math.min(item.points_awarded || 0, 0)), 0);
   const accuracy = resolved.length > 0 ? Math.round((won / resolved.length) * 100) : null;
@@ -983,21 +1003,25 @@ async function initMatchDetail() {
 
     document.title = `${match.home_team} vs ${match.away_team} — GreenPitch`;
     document.querySelector("#detail-title").textContent = `${match.home_team} vs ${match.away_team}`;
+    const timeZone = match.source === "simulated" ? undefined : "UTC";
+    const timeSuffix = timeZone ? " UTC" : "";
     document.querySelector("#detail-subtitle").textContent = match.utc_date
-      ? new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short", timeZone: "UTC" }).format(new Date(match.utc_date)) + " UTC"
+      ? new Intl.DateTimeFormat(undefined, { dateStyle: "full", timeStyle: "short", timeZone }).format(new Date(match.utc_date)) + timeSuffix
       : "Kick-off time unavailable";
-    document.querySelector("#detail-competition").textContent = match.competition;
+    document.querySelector("#detail-competition").textContent = match.source === "simulated" ? match.competition + " · Simulated" : match.competition;
     const statusElement = document.querySelector("#detail-status");
     statusElement.textContent = status;
-    statusElement.className = `status status-${status.toLowerCase()}`;
+    statusElement.className = `status status-${status.toLowerCase().replaceAll(" ", "-")}`;
     document.querySelector("#detail-home-team").textContent = home.name || match.home_team;
     document.querySelector("#detail-away-team").textContent = away.name || match.away_team;
     const scoreElement = document.querySelector("#detail-score");
-    scoreElement.textContent = typeof fullTime.home === "number" && typeof fullTime.away === "number"
-      ? `${fullTime.home} — ${fullTime.away}`
+    const homeScore = match.home_score ?? fullTime.home;
+    const awayScore = match.away_score ?? fullTime.away;
+    scoreElement.textContent = typeof homeScore === "number" && typeof awayScore === "number"
+      ? `${homeScore} — ${awayScore}`
       : "VS";
     document.querySelector("#detail-kickoff").textContent = match.utc_date
-      ? new Date(match.utc_date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: "UTC" }) + " UTC"
+      ? new Date(match.utc_date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone }) + timeSuffix
       : "";
 
     for (const [id, source, teamName] of [
@@ -1028,6 +1052,10 @@ async function initMatchDetail() {
       predictionPanel.classList.add("hidden");
       locked.classList.remove("hidden");
       locked.textContent = "Your prediction could not be verified. Refresh the page before trying again.";
+    } else if (match.source === "simulated" && currentUserIsAdmin) {
+      predictionPanel.classList.add("hidden");
+      locked.classList.remove("hidden");
+      locked.textContent = "Admins cannot predict simulated matches.";
     } else if (status === "Before" && currentUser) {
       const panel = document.querySelector("#detail-prediction-choices");
       const stakeInput = document.querySelector("#prediction-stake");
@@ -1239,7 +1267,7 @@ async function loadMyMatches() {
 
     for (const p of myPredictionsData) {
       if (p.status === "Before") incomingCount++;
-      else if (p.status === "Ongoing") ongoingCount++;
+      else if (p.status === "Ongoing" || p.status === "Awaiting result") ongoingCount++;
       else if (p.won === true) wonCount++;
       else if (p.won === false) lostCount++;
     }
@@ -1277,7 +1305,7 @@ function applyMyMatchesFilter() {
 
   const filtered = myPredictionsData.filter((item) => {
     if (selected === "incoming") return item.status === "Before";
-    if (selected === "ongoing") return item.status === "Ongoing";
+    if (selected === "ongoing") return item.status === "Ongoing" || item.status === "Awaiting result";
     if (selected === "ended") return item.status === "Ended" || item.status === "Unavailable";
     return true; // "all"
   });
@@ -1306,7 +1334,7 @@ function createMyMatchRow(item) {
   matchCell.className = "match-cell";
   const competition = document.createElement("span");
   competition.className = "competition-name";
-  competition.textContent = item.competition;
+  competition.textContent = item.source === "simulated" ? item.competition + " · Simulated" : item.competition;
   const teams = createTeamPair(
     item.home_team,
     item.home_crest,
@@ -1393,7 +1421,7 @@ function createMyMatchRow(item) {
   // Col 6: Net Points
   const pointsCell = document.createElement("td");
   pointsCell.className = "points-cell";
-  if (item.status === "Before" || item.status === "Ongoing") {
+  if (["Before", "Ongoing", "Awaiting result"].includes(item.status)) {
     const pendingSpan = document.createElement("span");
     pendingSpan.className = "mono muted";
     pendingSpan.textContent = "—";

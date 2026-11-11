@@ -11,9 +11,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Prediction, User
+from app.models import Prediction, SimulatedMatch, User
 from app.routers.auth import get_current_user
 from app.routers.matches import _fetch_matches
+from app.simulated_matches import get_simulated_match, simulated_fixture, simulated_match_id
 from app.utils.rate_limit import limiter
 
 
@@ -70,8 +71,14 @@ async def create_prediction(
     if payload.user_id is not None and payload.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only predict for your own account.")
 
-    matches = await _fetch_matches()
-    match = next((item for item in matches if item["id"] == payload.match_id), None)
+    if payload.match_id.startswith("sim-"):
+        if user.is_admin:
+            raise HTTPException(status_code=403, detail="Admins cannot predict simulated matches.")
+        simulated = get_simulated_match(db, payload.match_id, lock=True)
+        match = simulated_fixture(simulated) if simulated else None
+    else:
+        matches = await _fetch_matches()
+        match = next((item for item in matches if item["id"] == payload.match_id), None)
     if match is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match was not found in the current fixtures.")
     if match["status"] != "Before":
@@ -179,12 +186,19 @@ async def get_my_matches(
 
     live_data_unavailable = False
     try:
-        matches = await asyncio.wait_for(_fetch_matches(), timeout=4)
+        matches = []
+        if any(not pred.match_id.startswith("sim-") for pred in predictions):
+            matches = await asyncio.wait_for(_fetch_matches(), timeout=4)
     except (HTTPException, asyncio.TimeoutError) as exc:
         logger.warning("Live match enrichment unavailable: %s", getattr(exc, "detail", str(exc)) or "deadline exceeded")
         matches = []
         live_data_unavailable = True
     matches_by_id = {str(m["id"]): m for m in matches}
+    simulated_ids = {match_id for pred in predictions if (match_id := simulated_match_id(pred.match_id)) is not None}
+    if simulated_ids:
+        for item in db.scalars(select(SimulatedMatch).where(SimulatedMatch.id.in_(simulated_ids))):
+            fixture = simulated_fixture(item)
+            matches_by_id[fixture["id"]] = fixture
 
     results = []
     points_changed = False
@@ -227,7 +241,7 @@ async def get_my_matches(
                 points_changed = points_changed or match.get("utc_date") is not None
 
         # Auto-resolve concluded matches with official winner
-        if status_val == "Ended" and actual_winner and not pred.is_resolved:
+        if status_val == "Ended" and actual_winner and not pred.is_resolved and not pred.match_id.startswith("sim-"):
             settlement_attempted = True
             points_changed = _settle_prediction(db, pred, actual_winner) or points_changed
 
@@ -264,6 +278,7 @@ async def get_my_matches(
             "net_points": net_points,
             "points_awarded": net_points,
             "status": status_val,
+            "source": match.get("source") if match else None,
             "competition": competition,
             "home_team": home_team,
             "away_team": away_team,

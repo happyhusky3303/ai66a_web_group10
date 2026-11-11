@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,6 +16,7 @@ class User(Base):
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false())
     points: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
     last_daily_reward_date: Mapped[date | None] = mapped_column(
         Date, nullable=True
@@ -46,3 +47,33 @@ class Prediction(Base):
     utc_date: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="predictions")
+
+
+class SimulatedMatch(Base):
+    __tablename__ = "simulated_matches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    home_team: Mapped[str] = mapped_column(String(128))
+    away_team: Mapped[str] = mapped_column(String(128))
+    competition: Mapped[str] = mapped_column(String(128))
+    kickoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    home_score: Mapped[int | None] = mapped_column(Integer)
+    away_score: Mapped[int | None] = mapped_column(Integer)
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finalized_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    settled_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AdminUserChange(Base):
+    __tablename__ = "admin_user_changes"
+
+    request_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    action: Mapped[str] = mapped_column(String(24))
+    reason: Mapped[str] = mapped_column(String(500))
+    payload: Mapped[str] = mapped_column(String(4096))
+    before: Mapped[str] = mapped_column(String(256))
+    after: Mapped[str] = mapped_column(String(256))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

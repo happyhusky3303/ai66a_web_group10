@@ -30,7 +30,10 @@ def set_matches(monkeypatch, fixture_matches):
 def register_user(client, username="green_pitch"):
     response = client.post(
         "/auth/register",
-        json={"username": username, "password": "valid-password"},
+        json={
+            "username": username, "email": f"{username}@example.com",
+            "password": "Valid-password1!", "confirm_password": "Valid-password1!",
+        },
     )
     assert response.status_code == 201
     return response.json()
