@@ -17,17 +17,19 @@ function renderPredictionQuota() {
     : `resets in ${Math.floor(resetSeconds / 60)}m ${String(resetSeconds % 60).padStart(2, "0")}s`;
 
   quota.textContent = `Predictions left: ${predictionQuotaResetAt === null ? "up to " : ""}${predictionQuotaRemaining} · ${resetText} · shared network`;
-  document.querySelectorAll(".choice-button, .prediction-option").forEach((button) => {
+  document.querySelectorAll(".choice-button").forEach((button) => {
     button.disabled = predictionQuotaRemaining === 0 || button.dataset.predictionSubmitted === "true";
   });
+  updatePredictionControls();
 
   if (resetSeconds === 0) {
     predictionQuotaRemaining = PREDICTION_LIMIT;
     predictionQuotaResetAt = null;
     quota.textContent = `Predictions left: up to ${PREDICTION_LIMIT} · resets every minute · shared network`;
-    document.querySelectorAll(".choice-button, .prediction-option").forEach((button) => {
+    document.querySelectorAll(".choice-button").forEach((button) => {
       button.disabled = button.dataset.predictionSubmitted === "true";
     });
+    updatePredictionControls();
     if (predictionQuotaTimer !== null) {
       window.clearInterval(predictionQuotaTimer);
       predictionQuotaTimer = null;
@@ -46,6 +48,28 @@ function updatePredictionQuota(headers) {
   if (predictionQuotaTimer === null) {
     predictionQuotaTimer = window.setInterval(renderPredictionQuota, 1000);
   }
+}
+
+function updatePredictionControls() {
+  const stakeInput = document.querySelector("#prediction-stake");
+  if (!stakeInput) return;
+  const stake = Number(stakeInput.value);
+  const valid = Number.isSafeInteger(stake) && stake > 0 && currentUser && stake <= currentUser.points;
+  const preview = document.querySelector("#stake-preview");
+  const balance = document.querySelector("#prediction-balance");
+  if (balance && currentUser) balance.textContent = formatPoints(currentUser.points);
+  if (valid) {
+    preview.textContent = `Win: payout ${formatPoints(stake * 2)} pts (net +${formatPoints(stake)}); loss: −${formatPoints(stake)} pts.`;
+  } else {
+    preview.textContent = currentUser
+      ? "Enter a whole-number stake within your available balance."
+      : "Sign in to place a prediction.";
+  }
+  document.querySelectorAll(".prediction-option").forEach((button) => {
+    button.disabled = !valid
+      || predictionQuotaRemaining === 0
+      || button.dataset.predictionSubmitted === "true";
+  });
 }
 
 async function apiRequest(url, options = {}) {
@@ -411,19 +435,21 @@ function createMatchRow(match) {
     points.className = "received-points";
     const label = document.createElement("span");
     label.className = "received-points-label";
-    label.textContent = "Points received";
     const result = document.createElement("strong");
     result.className = "received-points-value";
     if (prediction && !match.winner) {
       result.textContent = "Pending";
       result.classList.add("muted");
     } else {
-      const pointsReceived = prediction
-        ? prediction === match.winner ? 100 : -100
+      const netPoints = prediction
+        ? prediction.predicted_winner === match.winner
+          ? prediction.stake === null ? 100 : prediction.stake
+          : prediction.stake === null ? -100 : -prediction.stake
         : 0;
-      result.textContent = `${pointsReceived > 0 ? "+" : ""}${pointsReceived} pts`;
-      result.classList.add(pointsReceived > 0 ? "text-green" : pointsReceived < 0 ? "text-red" : "muted");
+      result.textContent = `${netPoints > 0 ? "+" : ""}${netPoints} pts`;
+      result.classList.add(netPoints > 0 ? "text-green" : netPoints < 0 ? "text-red" : "muted");
     }
+    label.textContent = "Net points";
     points.append(label, result);
     detailsCell.append(points);
   } else {
@@ -440,14 +466,23 @@ function createMatchRow(match) {
 
 async function submitPrediction(matchId, winner, button) {
   const notice = document.querySelector("#app-message") || document.querySelector("#detail-message");
+  const stakeInput = document.querySelector("#prediction-stake");
+  const stake = Number(stakeInput?.value);
+  if (!Number.isSafeInteger(stake) || stake <= 0 || !currentUser || stake > currentUser.points) {
+    showNotice(notice, "Enter a whole-number stake within your available points.");
+    return;
+  }
   const buttons = button.parentElement.querySelectorAll("button");
   buttons.forEach((choice) => { choice.disabled = true; });
+  if (stakeInput) stakeInput.disabled = true;
   hideNotice(notice);
   try {
-    await apiRequest("/api/predict", {
+    const result = await apiRequest("/api/predict", {
       method: "POST",
-      body: JSON.stringify({ user_id: currentUser.id, match_id: matchId, predicted_winner: winner }),
+      body: JSON.stringify({ user_id: currentUser.id, match_id: matchId, predicted_winner: winner, stake }),
     });
+    currentUser.points = result.user_points;
+    updatePredictionControls();
     buttons.forEach((choice) => { choice.dataset.predictionSubmitted = "true"; });
     renderPredictionQuota();
     if (document.body.dataset.page === "match-detail") {
@@ -460,16 +495,15 @@ async function submitPrediction(matchId, winner, button) {
           : null;
       predictionPanel.classList.add("hidden");
       locked.classList.remove("hidden");
-      locked.textContent = team ? `You predicted ${team} to win.` : "You predicted a draw.";
+      locked.textContent = `${team ? `You predicted ${team} to win` : "You predicted a draw"} with a ${formatPoints(stake)}-point stake. Available balance: ${formatPoints(currentUser.points)} pts.`;
       return;
     }
     showNotice(notice, "Prediction saved. You can only predict each match once.", "success");
     buttons.forEach((choice) => { choice.textContent = choice === button ? "✓" : "·"; });
   } catch (error) {
     showNotice(notice, error.message);
-    buttons.forEach((choice) => {
-      choice.disabled = predictionQuotaRemaining === 0 || choice.dataset.predictionSubmitted === "true";
-    });
+    if (stakeInput) stakeInput.disabled = false;
+    updatePredictionControls();
   }
 }
 
@@ -576,7 +610,7 @@ async function initMatchCenter() {
       const data = await apiRequest("/api/my-predictions");
       predictedMatchIds = new Set(data.predictions.map((item) => String(item.match_id)));
       myPredictionChoices = new Map(
-        data.predictions.map((item) => [String(item.match_id), item.predicted_winner]),
+        data.predictions.map((item) => [String(item.match_id), item]),
       );
       document.querySelector("#show-predicted-control")?.classList.remove("hidden");
     } catch (error) {
@@ -711,7 +745,8 @@ function renderHomeAnalytics(data) {
     detail.textContent = `${item.predicted_label} pick · ${item.status}`;
     const result = document.createElement("strong");
     result.className = item.won === true ? "text-green" : item.won === false ? "text-red" : "muted";
-    result.textContent = item.points_awarded === null ? "Pending" : `${item.points_awarded > 0 ? "+" : ""}${item.points_awarded} pts`;
+    const netPoints = item.net_points ?? item.points_awarded;
+    result.textContent = netPoints === null ? "Pending" : `${netPoints > 0 ? "+" : ""}${netPoints} pts`;
     row.append(matchup, detail, result);
     recent.append(row);
   }
@@ -842,15 +877,18 @@ async function initMatchDetail() {
       locked.textContent = "Your prediction could not be verified. Refresh the page before trying again.";
     } else if (status === "Before" && currentUser) {
       const panel = document.querySelector("#detail-prediction-choices");
+      const stakeInput = document.querySelector("#prediction-stake");
+      stakeInput.max = String(currentUser.points);
+      stakeInput.addEventListener("input", updatePredictionControls);
       for (const [outcome, label] of [["home", match.home_team], ["draw", "Draw"], ["away", match.away_team]]) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "button prediction-option";
-        button.disabled = predictionQuotaRemaining === 0;
         button.textContent = label;
         button.addEventListener("click", () => submitPrediction(match.id, outcome, button));
         panel.append(button);
       }
+      updatePredictionControls();
       document.querySelector("#prediction-quota").classList.remove("hidden");
     } else {
       predictionPanel.classList.add("hidden");
@@ -1159,6 +1197,12 @@ function createMyMatchRow(item) {
   const teamText = document.createElement("span");
   teamText.textContent = item.predicted_team;
   badge.append(labelStrong, teamText);
+  if (item.stake !== null && item.stake !== undefined) {
+    const stakeText = document.createElement("small");
+    stakeText.className = "muted";
+    stakeText.textContent = `Stake: ${formatPoints(item.stake)} pts`;
+    badge.append(stakeText);
+  }
   predCell.append(badge);
 
   // Col 5: Result / Score
@@ -1192,7 +1236,7 @@ function createMyMatchRow(item) {
     resultCell.textContent = "—";
   }
 
-  // Col 6: Points Received / Lost
+  // Col 6: Net Points
   const pointsCell = document.createElement("td");
   pointsCell.className = "points-cell";
   if (item.status === "Before" || item.status === "Ongoing") {
@@ -1200,14 +1244,15 @@ function createMyMatchRow(item) {
     pendingSpan.className = "mono muted";
     pendingSpan.textContent = "—";
     pointsCell.append(pendingSpan);
-  } else if (item.points_awarded !== null) {
+  } else if ((item.net_points ?? item.points_awarded) !== null) {
+    const netPoints = item.net_points ?? item.points_awarded;
     const pointsPill = document.createElement("span");
-    if (item.points_awarded > 0) {
+    if (netPoints > 0) {
       pointsPill.className = "points-pill points-pill-won mono";
-      pointsPill.textContent = `+${item.points_awarded} pts`;
-    } else if (item.points_awarded < 0) {
+      pointsPill.textContent = `+${netPoints} pts`;
+    } else if (netPoints < 0) {
       pointsPill.className = "points-pill points-pill-lost mono";
-      pointsPill.textContent = `${item.points_awarded} pts`;
+      pointsPill.textContent = `${netPoints} pts`;
     } else {
       pointsPill.className = "points-pill points-pill-pending mono";
       pointsPill.textContent = "0 pts";

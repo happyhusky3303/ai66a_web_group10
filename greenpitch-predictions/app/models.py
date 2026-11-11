@@ -32,6 +32,7 @@ class Prediction(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     match_id: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
     predicted_winner: Mapped[str] = mapped_column(String(4), nullable=False)
+    stake: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_resolved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     won: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     competition: Mapped[str | None] = mapped_column(String(128), nullable=True)

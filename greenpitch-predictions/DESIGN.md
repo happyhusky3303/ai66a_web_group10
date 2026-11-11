@@ -28,5 +28,6 @@ deposits, wagers, or real-money features.
   users while a match is Before.
 - Login and registration use the same dark card system.
 - Show loading, empty, API configuration, and request-error states explicitly.
-- Predictions are free, score-only outcomes. A correct prediction earns 100
-  points and an incorrect one loses 100 points.
+- Users enter a positive stake from their available points before choosing an
+  outcome. A win pays 2× the stake; a loss forfeits the stake. No real money is
+  involved.

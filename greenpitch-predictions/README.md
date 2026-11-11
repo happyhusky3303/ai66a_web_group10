@@ -1,8 +1,8 @@
 # GreenPitch Predictions
 
 A lightweight football match prediction web app built with FastAPI, SQLite or
-PostgreSQL, SQLAlchemy, and vanilla HTML/CSS/JavaScript. It uses points only;
-there are no real-money or betting features.
+PostgreSQL, SQLAlchemy, and vanilla HTML/CSS/JavaScript. Users stake in-app
+points on predictions; no real money or deposits are involved.
 
 ## Requirements
 
@@ -103,9 +103,11 @@ For production behind HTTPS, set `SESSION_HTTPS_ONLY=true` in `.env`.
 - `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`
 - `GET /api/matches` — football-data.org fixtures, cached for 300 seconds
 - `GET /api/matches/{match_id}` — normalized fixture plus the complete provider response
-- `GET /api/my-predictions` — signed-in user's existing match picks
-- `POST /api/predict` — authenticated user's `match_id` and `predicted_winner`
-  (`home`, `away`, or `draw`); `user_id` is optional and must match the session
+- `GET /api/my-predictions` — signed-in user's existing match picks, including
+  their stake (`null` for legacy predictions)
+- `POST /api/predict` — authenticated user's `match_id`, `predicted_winner`
+  (`home`, `away`, or `draw`), and positive integer `stake`; `user_id` is
+  optional and must match the session. The stake is deducted on placement.
 - `GET /api/leaderboard`
 - `POST /admin/resolve` — requires `X-Admin-Token`; JSON body:
   `{"match_id":"...","actual_winner":"home"}` (winner may also be `away` or
@@ -114,6 +116,12 @@ For production behind HTTPS, set `SESSION_HTTPS_ONLY=true` in `.env`.
 Match API responses include a `matches` array and cache metadata. The provider
 token is sent only from the backend using football-data.org's `X-Auth-Token`
 header. Configure `FOOTBALL_DATA_API_KEY` before requesting matches.
+
+Each user starts with 1,000 available points. A winning new prediction credits
+2× its stake (a net gain of one stake after the initial deduction); a losing
+prediction receives no refund. Existing predictions created before this change
+have no recorded stake and retain the prior +100/−100 settlement rule. The
+database migration leaves existing balances and predictions unchanged.
 
 ## Rate limits
 

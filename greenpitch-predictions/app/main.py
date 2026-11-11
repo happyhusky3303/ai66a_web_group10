@@ -47,6 +47,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             ("home_crest", "VARCHAR(512)"),
             ("away_crest", "VARCHAR(512)"),
             ("utc_date", "VARCHAR(64)"),
+            ("stake", "INTEGER"),
         ]:
             if col not in existing_columns:
                 conn.execute(text(f"ALTER TABLE predictions ADD COLUMN {col} {col_type}"))

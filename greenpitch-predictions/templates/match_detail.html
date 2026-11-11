@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#121212">
     <title>Match Details — GreenPitch</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=6">
-    <script src="/static/js/app.js?v=6" defer></script>
+    <link rel="stylesheet" href="/static/css/style.css?v=7">
+    <script src="/static/js/app.js?v=7" defer></script>
   </head>
   <body data-page="match-detail">
     <div class="shell">
@@ -61,11 +61,17 @@
               <div>
                 <p class="eyebrow">MAKE YOUR CALL</p>
                 <h2>Who will win?</h2>
-                <p class="muted">Choose the match outcome. Correct picks earn 100 points.</p>
+                <p class="muted">Stake points on your pick. A win pays back 2× your stake; a loss forfeits it.</p>
               </div>
               <span id="prediction-quota" class="prediction-quota hidden" role="status" aria-live="polite">
                 Predictions left: up to 10 · resets every minute · shared network
               </span>
+              <div class="stake-controls">
+                <label for="prediction-stake">Stake points</label>
+                <input id="prediction-stake" class="stake-input" type="number" min="1" step="1" inputmode="numeric" placeholder="Enter an amount" required>
+                <span>Available: <strong id="prediction-balance" class="mono">—</strong> pts</span>
+                <span id="stake-preview" class="muted" aria-live="polite">Enter a stake to preview the payout.</span>
+              </div>
               <div id="detail-prediction-choices" class="detail-prediction-choices"></div>
             </div>
             <div id="prediction-locked" class="prediction-locked hidden"></div>

@@ -189,6 +189,9 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 .prediction-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; padding: 20px; border: 1px solid #32d74b45; border-radius: 12px; background: linear-gradient(110deg, #16351d, #1e1e1e 70%); }
 .prediction-panel .eyebrow, .prediction-panel h2, .prediction-panel p { margin-bottom: 5px; }
 .prediction-panel .muted { font-size: 11px; }
+.stake-controls { display: grid; flex: 1 1 100%; grid-template-columns: auto minmax(140px, 220px) auto 1fr; align-items: center; gap: 10px; font-size: 11px; }
+.stake-input { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font: 12px var(--font-mono); }
+.stake-controls strong { color: var(--text); }
 .detail-prediction-choices { display: flex; flex: 1 1 100%; gap: 10px; }
 .prediction-option { min-height: 50px; flex: 1; border-color: #32d74b70; background: #32d74b; color: #102114; }
 .prediction-option:hover:not(:disabled) { background: #49e25e; }
@@ -284,6 +287,7 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
   .match-scoreboard { gap: 8px; padding: 24px 0; }
   .team-crest { width: 46px; height: 46px; }
   .detail-prediction-choices { flex-direction: column; }
+  .stake-controls { grid-template-columns: 1fr 1fr; }
   .match-data-fields { grid-template-columns: 1fr; }
   .footer { flex-direction: column; font-size: 8px; }
 }

@@ -1,12 +1,13 @@
 # Football Score Predictor
 
-A lightweight, non-gambling web application for predicting football match outcomes using real-time sports data.
+A lightweight web application for predicting football match outcomes using
+real-time sports data and in-app points. It does not use real money.
 
 ## Core Features
 
-- **Free score predictions**: Users can submit score predictions for upcoming matches with no real money, deposits, or betting mechanics.
+- **Points-based predictions**: Users stake available points on upcoming match outcomes; wins pay 2× the stake and losses forfeit it.
 - **Live match data**: Automatically fetches fixtures, team statistics, and live match results via Football API.
-- **Leaderboard & scoring system**: Tracks prediction accuracy and awards points to rank participants.
+- **Leaderboard & scoring system**: Tracks available point balances and prediction accuracy to rank participants.
 - **Lightweight UI**: Fast-loading, framework-free interface.
 
 ## Tech Stack
