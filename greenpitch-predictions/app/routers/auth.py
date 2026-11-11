@@ -2,12 +2,12 @@ import hashlib
 import hmac
 import re
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{3,30}$")
 PASSWORD_PATTERN = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,128}$")
 MAX_FAILED_LOGINS = 5
 LOCK_DURATION = timedelta(minutes=15)
+DAILY_REWARD_POINTS = 500
 
 
 class SignupInput(BaseModel):
@@ -93,12 +94,41 @@ def verify_password(password: str, stored_hash: str) -> bool:
     return hmac.compare_digest(actual, expected)
 
 
+def utc_today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
+def award_daily_reward(db: Session, user: User) -> bool:
+    today = utc_today()
+    result = db.execute(
+        update(User)
+        .where(
+            User.id == user.id,
+            (
+                User.last_daily_reward_date.is_(None)
+                | (User.last_daily_reward_date < today)
+            ),
+        )
+        .values(
+            points=User.points + DAILY_REWARD_POINTS,
+            last_daily_reward_date=today,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    claimed = result.rowcount == 1
+    if claimed:
+        db.commit()
+    db.refresh(user)
+    return claimed
+
+
 def get_current_user(request: Request, db: Annotated[Session, Depends(get_db)]) -> User:
     user_id = request.session.get("user_id")
     user = db.get(User, user_id) if isinstance(user_id, int) else None
     if user is None or not user.is_active:
         request.session.clear()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Please sign in.")
+    award_daily_reward(db, user)
     return user
 
 
@@ -197,4 +227,13 @@ def current_user(request: Request, db: Annotated[Session, Depends(get_db)]) -> d
     if user is None or not user.is_active:
         request.session.clear()
         return {"authenticated": False}
-    return {"authenticated": True, "user": UserResponse.model_validate(user).model_dump()}
+    reward_claimed = award_daily_reward(db, user)
+    return {
+        "authenticated": True,
+        "user": UserResponse.model_validate(user).model_dump(),
+        "daily_reward": {
+            "claimed": reward_claimed,
+            "points": DAILY_REWARD_POINTS,
+            "day": user.last_daily_reward_date.isoformat(),
+        },
+    }

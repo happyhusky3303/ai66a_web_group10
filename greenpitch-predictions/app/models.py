@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -17,6 +17,9 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     points: Mapped[int] = mapped_column(Integer, default=1000, nullable=False)
+    last_daily_reward_date: Mapped[date | None] = mapped_column(
+        Date, nullable=True
+    )
 
     predictions: Mapped[list["Prediction"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

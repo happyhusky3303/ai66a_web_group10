@@ -123,6 +123,10 @@ prediction receives no refund. Existing predictions created before this change
 have no recorded stake and retain the prior +100/−100 settlement rule. The
 database migration leaves existing balances and predictions unchanged.
 
+On the first authenticated app visit each UTC calendar day, users automatically
+receive 500 points. The reward is credited once per UTC date, including during
+the first authenticated API request if a user bypasses the normal page flow.
+
 ## Rate limits
 
 SlowAPI limits each client IP to 5 requests/minute for registration and login,

@@ -6,6 +6,7 @@ real-time sports data and in-app points. It does not use real money.
 ## Core Features
 
 - **Points-based predictions**: Users stake available points on upcoming match outcomes; wins pay 2× the stake and losses forfeit it.
+- **Daily reward**: Users automatically receive 500 in-app points on their first authenticated visit each UTC calendar day.
 - **Live match data**: Automatically fetches fixtures, team statistics, and live match results via Football API.
 - **Leaderboard & scoring system**: Tracks available point balances and prediction accuracy to rank participants.
 - **Lightweight UI**: Fast-loading, framework-free interface.

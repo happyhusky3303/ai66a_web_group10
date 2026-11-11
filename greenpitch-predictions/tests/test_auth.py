@@ -1,31 +1,88 @@
+from datetime import timedelta
+
 import pytest
 from sqlalchemy import select
 
 from app import database
 from app.models import User
+from app.routers import auth
 from app.routers.auth import hash_password, verify_password
+
+
+def signup_payload(username):
+    return {
+        "username": username,
+        "email": f"{username}@example.com",
+        "password": "Valid-password1!",
+        "confirm_password": "Valid-password1!",
+    }
 
 
 def test_registration_creates_user_and_authenticates_session(client):
     response = client.post(
         "/auth/register",
-        json={"username": "  green_pitch  ", "password": "valid-password"},
+        json={**signup_payload("green_pitch"), "username": "  green_pitch  "},
     )
 
     assert response.status_code == 201
     assert response.json()["username"] == "green_pitch"
     assert response.json()["points"] == 1000
     assert "greenpitch_session" in response.cookies
-    assert client.get("/auth/me").json() == {
+    current = client.get("/auth/me").json()
+    assert current == {
         "authenticated": True,
-        "user": response.json(),
+        "user": {**response.json(), "points": 1500},
+        "daily_reward": {
+            "claimed": True,
+            "points": 500,
+            "day": auth.utc_today().isoformat(),
+        },
     }
 
     with database.SessionLocal() as db:
         user = db.scalar(select(User).where(User.username == "green_pitch"))
         assert user is not None
-        assert user.password_hash != "valid-password"
-        assert verify_password("valid-password", user.password_hash)
+        assert user.password_hash != "Valid-password1!"
+        assert verify_password("Valid-password1!", user.password_hash)
+        assert user.points == 1500
+
+
+def test_daily_reward_is_once_per_utc_day(client, monkeypatch):
+    registration = client.post(
+        "/auth/register",
+        json=signup_payload("reward_user"),
+    )
+    assert registration.status_code == 201
+    today = auth.utc_today()
+
+    first = client.get("/auth/me").json()
+    repeated = client.get("/auth/me").json()
+    assert first["daily_reward"]["claimed"] is True
+    assert first["user"]["points"] == 1500
+    assert repeated["daily_reward"]["claimed"] is False
+    assert repeated["user"]["points"] == 1500
+
+    next_day = today + timedelta(days=1)
+    monkeypatch.setattr(auth, "utc_today", lambda: next_day)
+    next_reward = client.get("/auth/me").json()
+    assert next_reward["daily_reward"]["claimed"] is True
+    assert next_reward["daily_reward"]["day"] == next_day.isoformat()
+    assert next_reward["user"]["points"] == 2000
+
+
+def test_daily_reward_is_awarded_on_first_authenticated_api_request(client):
+    registration = client.post(
+        "/auth/register",
+        json=signup_payload("api_reward_user"),
+    )
+    assert registration.status_code == 201
+
+    predictions = client.get("/api/my-predictions")
+    current = client.get("/auth/me").json()
+
+    assert predictions.status_code == 200
+    assert current["user"]["points"] == 1500
+    assert current["daily_reward"]["claimed"] is False
 
 
 @pytest.mark.parametrize(

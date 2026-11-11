@@ -570,6 +570,16 @@ async function loadCurrentUser() {
       if (points) points.textContent = "—";
     }
   }
+  if (currentUser && result.daily_reward?.claimed) {
+    showNotice(
+      document.querySelector("#home-app-message")
+        || document.querySelector("#my-app-message")
+        || document.querySelector("#app-message")
+        || document.querySelector("#detail-message"),
+      `Daily reward collected: +${formatPoints(result.daily_reward.points)} points. Available balance: ${formatPoints(currentUser.points)} points.`,
+      "success",
+    );
+  }
   if (loadError) {
     showNotice(
       document.querySelector("#app-message")

@@ -60,6 +60,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             ("failed_login_attempts", "INTEGER NOT NULL DEFAULT 0"),
             ("locked_until", datetime_type),
             ("is_active", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ("last_daily_reward_date", "DATE"),
         ]:
             if col not in existing_columns:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
