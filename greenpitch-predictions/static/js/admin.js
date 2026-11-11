@@ -41,83 +41,179 @@
     return row;
   }
 
-  function matchRecord(match) {
+  function matchRecord(match, openState) {
     const teams = match.home_team + " vs " + match.away_team;
     const kickoff = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" })
       .format(new Date(match.utc_date));
-    const summary = match.competition + " · " + kickoff + " · " + match.status;
-    const row = record(teams, summary);
+    const status = match.status === "Before" ? "Upcoming" : match.status;
+    const row = record(teams, match.competition + " · " + kickoff + " · " + status);
+    if (match.home_score !== null && match.away_score !== null) {
+      row.firstElementChild.append(element("p", match.home_score + "–" + match.away_score, "mono"));
+    }
     if (match.status === "Ended") {
-      row.append(element("p", match.home_score + "–" + match.away_score
-        + " · " + match.settled_count + " predictions settled", "mono"));
-    } else if (match.status === "Awaiting result") {
-      const form = element("form", "", "admin-score-form");
-      const fields = [match.home_team, match.away_team].map(team => {
-        const label = element("label", team + " score");
-        const input = element("input", "", "select-input");
-        Object.assign(input, { type: "number", min: "0", max: "2147483647", step: "1", required: true });
-        label.append(input);
-        form.append(label);
-        return input;
-      });
-      const submit = element("button", "Finalize score", "button button-primary");
-      form.append(submit);
-      form.addEventListener("submit", async event => {
-        event.preventDefault();
-        const [home_score, away_score] = fields.map(input => input.valueAsNumber);
-        const outcome = home_score === away_score ? "Draw" : (home_score > away_score ? match.home_team : match.away_team) + " wins";
-        const score = match.home_team + " " + home_score + "–" + away_score + " " + match.away_team;
-        if (!window.confirm("Finalize " + score + "? " + outcome + ". This will settle predictions.")) return;
-        submit.disabled = true;
-        try {
-          const result = await post("/simulated-matches/" + match.id + "/finalize", { home_score, away_score });
-          row.replaceWith(matchRecord(result));
-          showNotice(message, score + ". Predictions settled.", "success");
-        } catch (error) {
-          showNotice(message, error.message);
-        } finally {
-          submit.disabled = false;
-        }
-      });
-      row.append(form);
+      row.append(element("p", match.settled_count + " settled", "muted"));
+    } else {
+      const edit = button("Update status and score");
+      edit.setAttribute("aria-haspopup", "dialog");
+      edit.setAttribute("aria-label", "Update status and score for " + teams);
+      edit.addEventListener("click", () => openState(match));
+      row.append(edit);
     }
     return row;
+  }
+
+  function publishPayload(form) {
+    const fields = new FormData(form);
+    const data = {
+      home_team: fields.get("home_team"),
+      away_team: fields.get("away_team"),
+      competition: fields.get("competition"),
+      kickoff: new Date(fields.get("kickoff")).toISOString(),
+    };
+    const extra = fields.get("provider_json").trim();
+    let details;
+    try {
+      details = extra ? JSON.parse(extra) : {};
+    } catch {
+      throw new Error("Additional match data must be valid JSON.");
+    }
+    if (!details || typeof details !== "object" || Array.isArray(details)) {
+      throw new Error("Additional match data must be a JSON object.");
+    }
+
+    // Named form fields take precedence over the same keys in the optional JSON.
+    for (const [key, input] of fields) {
+      const value = input.trim();
+      if (!value || ["home_team", "away_team", "competition", "kickoff", "provider_json", "referee"].includes(key)) continue;
+      const [group, field] = key.split(".");
+      if (field) {
+        const nested = details[group];
+        details[group] = { ...(nested && typeof nested === "object" && !Array.isArray(nested) ? nested : {}), [field]: value };
+      } else {
+        details[group] = key === "matchday" ? Number(value) : value;
+      }
+    }
+    const referee = fields.get("referee").trim();
+    if (referee) {
+      const [first, ...remaining] = Array.isArray(details.referees) ? details.referees : [];
+      details.referees = [{ ...(first && typeof first === "object" ? first : {}), name: referee }, ...remaining];
+    }
+    return { ...data, details };
   }
 
   function initMatches() {
     const list = document.querySelector("#admin-fixtures");
     const refresh = document.querySelector("#refresh-fixtures");
-    const form = document.querySelector("#publish-match");
-    const publish = form.querySelector("button");
+    const publishDialog = document.querySelector("#publish-dialog");
+    const stateDialog = document.querySelector("#match-state-dialog");
+    const publishForm = document.querySelector("#publish-match");
+    const stateForm = document.querySelector("#match-state-form");
+    const publishError = document.querySelector("#publish-error");
+    const stateError = document.querySelector("#match-state-error");
+    const kickoffField = document.querySelector("#reschedule-field");
+    const scoreFields = document.querySelector("#match-score-fields");
+    const stateHint = document.querySelector("#match-state-hint");
+    const { status, kickoff, home_score, away_score } = stateForm.elements;
+    let selectedMatch;
+    let loadVersion = 0;
+
+    function updateStateFields() {
+      const upcoming = status.value === "upcoming";
+      const ended = status.value === "ended";
+      kickoffField.classList.toggle("hidden", !upcoming);
+      kickoff.disabled = !upcoming;
+      scoreFields.classList.toggle("hidden", upcoming);
+      scoreFields.disabled = upcoming;
+      home_score.required = away_score.required = ended;
+      stateHint.textContent = upcoming
+        ? "A future kick-off reopens predictions and clears any live score."
+        : ended ? "Saving the final score settles predictions and locks the result."
+          : "Predictions close when the match goes ongoing. You can leave the live score blank.";
+    }
+
+    function openState(match) {
+      selectedMatch = match;
+      document.querySelector("#match-state-teams").textContent = match.home_team + " vs " + match.away_team;
+      const date = new Date(match.utc_date);
+      kickoff.value = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      status.value = match.status === "Before" ? "upcoming" : match.status === "Ongoing" ? "ongoing" : "ended";
+      home_score.value = match.home_score ?? "";
+      away_score.value = match.away_score ?? "";
+      hideNotice(stateError);
+      updateStateFields();
+      stateDialog.showModal();
+    }
+
     async function load() {
+      const version = ++loadVersion;
       refresh.disabled = true;
       list.textContent = "Loading simulated fixtures…";
       try {
         const matches = await apiRequest("/api/admin/simulated-matches", { signal: timeout() });
-        list.replaceChildren(...matches.map(matchRecord));
+        if (version !== loadVersion) return;
+        list.replaceChildren(...matches.map(match => matchRecord(match, openState)));
         if (!matches.length) list.textContent = "No simulated fixtures yet.";
       } catch (error) {
-        list.textContent = error.message;
+        if (version === loadVersion) list.textContent = error.message;
       } finally {
-        refresh.disabled = false;
+        if (version === loadVersion) refresh.disabled = false;
       }
     }
+
+    function bindDialog(dialog, form, errorNotice, save) {
+      const submit = form.querySelector("[type=submit]");
+      const cancel = form.querySelector("[data-close-dialog]");
+      cancel.addEventListener("click", () => dialog.close());
+      dialog.addEventListener("cancel", event => { if (submit.disabled) event.preventDefault(); });
+      form.addEventListener("submit", async event => {
+        event.preventDefault();
+        hideNotice(errorNotice);
+        submit.disabled = cancel.disabled = true;
+        try {
+          const successMessage = await save();
+          if (!successMessage) return;
+          dialog.close();
+          showNotice(message, successMessage, "success");
+          await load();
+        } catch (error) {
+          showNotice(errorNotice, error.message);
+        } finally {
+          submit.disabled = cancel.disabled = false;
+        }
+      });
+    }
+
     refresh.addEventListener("click", load);
-    form.addEventListener("submit", async event => {
-      event.preventDefault();
-      const data = Object.fromEntries(new FormData(form));
-      data.kickoff = new Date(data.kickoff).toISOString();
-      publish.disabled = true;
-      try {
-        await post("/simulated-matches", data);
-        form.reset();
-        showNotice(message, "Simulated fixture published.", "success");
-        await load();
-      } catch (error) {
-        showNotice(message, error.message);
-      } finally {
-        publish.disabled = false;
+    document.querySelector("#open-publish").addEventListener("click", () => {
+      hideNotice(publishError);
+      publishDialog.showModal();
+    });
+    status.addEventListener("change", updateStateFields);
+
+    bindDialog(publishDialog, publishForm, publishError, async () => {
+      await post("/simulated-matches", publishPayload(publishForm));
+      publishForm.reset();
+      publishForm.querySelector("details").open = false;
+      return "Simulated fixture published.";
+    });
+    bindDialog(stateDialog, stateForm, stateError, async () => {
+      const data = { status: status.value };
+      if (status.value === "upcoming") {
+        data.kickoff = new Date(kickoff.value).toISOString();
+      } else {
+        data.home_score = home_score.value === "" ? null : home_score.valueAsNumber;
+        data.away_score = away_score.value === "" ? null : away_score.valueAsNumber;
+        if ((data.home_score === null) !== (data.away_score === null)) {
+          throw new Error("Enter both scores or leave both blank.");
+        }
       }
+      if (data.status === "ended") {
+        const score = selectedMatch.home_team + " " + data.home_score + "–" + data.away_score + " " + selectedMatch.away_team;
+        if (!window.confirm("Finalize " + score + " and settle predictions?")) return;
+      }
+      const result = await post("/simulated-matches/" + selectedMatch.id + "/state", data);
+      return data.status === "ended" ? "Final score saved. Predictions settled."
+        : result.status === "Ongoing" ? "Ongoing status and score saved." : "Upcoming status saved.";
     });
     load();
   }

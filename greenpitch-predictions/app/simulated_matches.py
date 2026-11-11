@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -36,6 +37,22 @@ def kickoff_utc(match: SimulatedMatch) -> datetime:
     return match.kickoff.astimezone(timezone.utc)
 
 
+def detail_object(details: dict, key: str) -> dict:
+    value = details.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def image_url(value: object) -> str | None:
+    if isinstance(value, str) and len(value) <= 512:
+        try:
+            url = urlsplit(value)
+        except ValueError:
+            return None
+        if url.scheme in {"http", "https"} and url.hostname and url.username is None:
+            return value
+    return None
+
+
 def simulated_fixture(match: SimulatedMatch) -> dict:
     kickoff = kickoff_utc(match)
     winner = None
@@ -46,20 +63,48 @@ def simulated_fixture(match: SimulatedMatch) -> dict:
             winner = "home"
         elif match.away_score > match.home_score:
             winner = "away"
+    elif match.status_override == "ongoing":
+        status = "Ongoing"
     else:
         status = "Before" if kickoff > datetime.now(timezone.utc) else "Awaiting result"
+
+    details = match.details or {}
+    home = detail_object(details, "homeTeam")
+    away = detail_object(details, "awayTeam")
+    competition = detail_object(details, "competition")
+    score = detail_object(details, "score")
+    home_crest = image_url(home.get("crest"))
+    away_crest = image_url(away.get("crest"))
+    public_id = f"sim-{match.id}"
+    provider_score = {
+        **score,
+        "winner": {"home": "HOME_TEAM", "away": "AWAY_TEAM", "draw": "DRAW"}.get(winner),
+        "fullTime": {"home": match.home_score if winner else None, "away": match.away_score if winner else None},
+    }
+    provider_score.pop("current", None)
+    if status == "Ongoing":
+        provider_score["current"] = {"home": match.home_score, "away": match.away_score}
     return {
-        "id": f"sim-{match.id}",
+        "id": public_id,
         "source": "simulated",
         "competition": match.competition,
         "utc_date": kickoff.isoformat(),
         "status": status,
         "home_team": match.home_team,
         "away_team": match.away_team,
-        "home_crest": None,
-        "away_crest": None,
+        "home_crest": home_crest,
+        "away_crest": away_crest,
         "home_score": match.home_score,
         "away_score": match.away_score,
         "winner": winner,
-        "provider_data": {},
+        "provider_data": {
+            **details,
+            "id": public_id,
+            "utcDate": kickoff.isoformat(),
+            "status": {"Before": "SCHEDULED", "Ongoing": "IN_PLAY", "Ended": "FINISHED"}.get(status, "Awaiting result"),
+            "competition": {**competition, "name": match.competition, "emblem": image_url(competition.get("emblem"))},
+            "homeTeam": {**home, "name": match.home_team, "crest": home_crest},
+            "awayTeam": {**away, "name": match.away_team, "crest": away_crest},
+            "score": provider_score,
+        },
     }

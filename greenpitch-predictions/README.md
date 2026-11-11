@@ -123,11 +123,16 @@ access, sign in or refresh the page to see **Create Match** and **User Managemen
 Revocation takes effect on the next admin request. Use HTTPS with
 `SESSION_HTTPS_ONLY=true` in deployed environments.
 
-- **Create Match** publishes a simulated fixture. Users can stake shared points
-  until kick-off. Refresh the fixture list after kick-off, enter both scores,
-  and confirm the final score to settle predictions. The score is permanent
-  and the same result can be safely retried. Simulated payouts affect the
-  shared leaderboard. Admin accounts cannot predict simulated matches.
+- **Create Match** opens a form for publishing a simulated fixture. Optional
+  details appear in the public fixture data. Additional provider-shaped JSON
+  can include lineups, officials, and other fields. The saved fixture and
+  score take precedence over those same fields in the JSON.
+- Use **Update status and score** to mark a fixture Ongoing, assign a live
+  score, or move it back to Upcoming with a future kick-off. Predictions
+  close at kick-off or when the admin marks it Ongoing, whichever comes first.
+  Mark it Ended and confirm both scores to settle predictions. A settled
+  result is permanent. Simulated payouts affect the shared leaderboard.
+  Admin accounts cannot predict simulated matches.
 - **User Management** searches regular accounts by username or email. Admins
   can deactivate or reactivate accounts, clear sign-in lockouts, and apply a
   signed points adjustment. Each change requires a reason and is recorded in

@@ -33,20 +33,81 @@
       </section>
       <p id="admin-message" class="notice hidden" role="status" aria-live="polite"></p>
       {% if page == "create-match" %}
-      <section class="card admin-card" aria-labelledby="publish-heading">
-        <h2 id="publish-heading">Publish a fixture</h2>
-        <form id="publish-match" class="admin-form">
+      <dialog id="publish-dialog" class="admin-match-dialog" aria-labelledby="publish-heading">
+        <h2 id="publish-heading">Create simulated match</h2>
+        <form id="publish-match" class="admin-form admin-match-form">
           <label>Home team<input class="select-input" name="home_team" maxlength="128" required></label>
           <label>Away team<input class="select-input" name="away_team" maxlength="128" required></label>
           <label>Competition<input class="select-input" name="competition" maxlength="128" required></label>
           <label>Kick-off (local time)<input class="select-input" type="datetime-local" name="kickoff" required></label>
-          <button class="button button-primary" type="submit">Publish match</button>
+          <details class="admin-optional-fields">
+            <summary>Optional match details</summary>
+            <div class="admin-form">
+              <label>Venue<input class="select-input" name="venue" type="text" maxlength="128"></label>
+              <label>Country or area<input class="select-input" name="area.name" type="text" maxlength="128"></label>
+              <label>Competition code<input class="select-input" name="competition.code" type="text" maxlength="128"></label>
+              <label>Competition emblem URL<input class="select-input" name="competition.emblem" type="url" maxlength="512" pattern="https?://.+"></label>
+              <label>Season start<input class="select-input" name="season.startDate" type="date" ></label>
+              <label>Season end<input class="select-input" name="season.endDate" type="date" ></label>
+              <label>Matchday<input class="select-input" name="matchday" type="number" min="1" max="2147483647" step="1"></label>
+              <label>Stage<input class="select-input" name="stage" type="text" maxlength="128"></label>
+              <label>Group<input class="select-input" name="group" type="text" maxlength="128"></label>
+              <label>Home short name<input class="select-input" name="homeTeam.shortName" type="text" maxlength="128"></label>
+              <label>Home team code<input class="select-input" name="homeTeam.tla" type="text" maxlength="128"></label>
+              <label>Home crest URL<input class="select-input" name="homeTeam.crest" type="url" maxlength="512" pattern="https?://.+"></label>
+              <label>Away short name<input class="select-input" name="awayTeam.shortName" type="text" maxlength="128"></label>
+              <label>Away team code<input class="select-input" name="awayTeam.tla" type="text" maxlength="128"></label>
+              <label>Away crest URL<input class="select-input" name="awayTeam.crest" type="url" maxlength="512" pattern="https?://.+"></label>
+              <label>Referee name<input class="select-input" name="referee" type="text" maxlength="128"></label>
+            </div>
+            <label class="admin-extra-data">Additional match data (JSON)
+              <textarea class="select-input mono" name="provider_json" rows="4" maxlength="20000" aria-describedby="provider-json-hint"></textarea>
+            </label>
+            <p id="provider-json-hint" class="muted">Use a JSON object for fields such as lineups, referees or half-time scores. Enter only data that should appear publicly.</p>
+          </details>
+          <p id="publish-error" class="notice hidden" role="alert"></p>
+          <div class="admin-pagination">
+            <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+            <button class="button button-primary" type="submit">Publish match</button>
+          </div>
         </form>
-      </section>
+      </dialog>
+      <dialog id="match-state-dialog" class="admin-match-dialog admin-match-state" aria-labelledby="match-state-title">
+        <h2 id="match-state-title">Update match</h2>
+        <p class="muted" id="match-state-teams"></p>
+        <form id="match-state-form" class="admin-form admin-match-form">
+          <label><span id="match-status-label">Status</span>
+            <select class="select-input" name="status" aria-labelledby="match-status-label" required>
+              <option value="upcoming">Upcoming</option>
+              <option value="ongoing">Ongoing</option>
+              <option value="ended">Ended</option>
+            </select>
+          </label>
+          <label id="reschedule-field">Kick-off (local time)
+            <input class="select-input" type="datetime-local" name="kickoff" required>
+          </label>
+          <fieldset id="match-score-fields">
+            <legend>Score</legend>
+            <div class="admin-form">
+              <label>Home score<input class="select-input" name="home_score" type="number" min="0" max="2147483647" step="1"></label>
+              <label>Away score<input class="select-input" name="away_score" type="number" min="0" max="2147483647" step="1"></label>
+            </div>
+          </fieldset>
+          <p id="match-state-hint" class="muted" aria-live="polite"></p>
+          <p id="match-state-error" class="notice hidden" role="alert"></p>
+          <div class="admin-pagination">
+            <button class="button button-quiet" type="button" data-close-dialog>Cancel</button>
+            <button class="button button-primary" type="submit">Save changes</button>
+          </div>
+        </form>
+      </dialog>
       <section class="card admin-card" aria-labelledby="fixtures-heading">
         <div class="admin-card-heading">
           <h2 id="fixtures-heading">Simulated fixtures</h2>
-          <button id="refresh-fixtures" type="button" class="button button-quiet">Refresh</button>
+          <div class="admin-pagination">
+            <button id="refresh-fixtures" type="button" class="button button-quiet">Refresh</button>
+            <button id="open-publish" type="button" class="button button-primary" aria-haspopup="dialog" aria-controls="publish-dialog">Create match</button>
+          </div>
         </div>
         <div id="admin-fixtures" class="admin-records" aria-live="polite"></div>
       </section>

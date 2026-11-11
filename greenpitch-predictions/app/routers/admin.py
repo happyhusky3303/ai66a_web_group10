@@ -1,11 +1,11 @@
 import json
 import secrets
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, field_validator
 from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -45,11 +45,26 @@ class MatchInput(AdminInput):
     away_team: str = Field(min_length=1, max_length=128)
     competition: str = Field(min_length=1, max_length=128)
     kickoff: AwareDatetime
+    details: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @field_validator("details")
+    @classmethod
+    def validate_details(cls, value: dict) -> dict:
+        if len(json.dumps(value, ensure_ascii=True, allow_nan=False)) > 24_000:
+            raise ValueError("Optional match data is too large.")
+        return value
 
 
 class ScoreInput(AdminInput):
     home_score: int = Field(strict=True, ge=0, le=MAX_POINTS)
     away_score: int = Field(strict=True, ge=0, le=MAX_POINTS)
+
+
+class MatchStateInput(AdminInput):
+    status: Literal["upcoming", "ongoing", "ended"]
+    kickoff: AwareDatetime | None = None
+    home_score: int | None = Field(default=None, strict=True, ge=0, le=MAX_POINTS)
+    away_score: int | None = Field(default=None, strict=True, ge=0, le=MAX_POINTS)
 
 
 class ChangeInput(AdminInput):
@@ -90,24 +105,60 @@ def publish_match(payload: MatchInput, db: Db, actor: Actor) -> dict:
 
 @router.post("/simulated-matches/{match_id}/finalize", dependencies=mutation)
 def finalize_match(match_id: str, payload: ScoreInput, db: Db, actor: Actor) -> dict:
+    match = lock_match(db, match_id)
+    if match.finalized_at is None and match.status_override != "ongoing" and kickoff_utc(match) > datetime.now(timezone.utc):
+        raise HTTPException(409, "A final score can only be entered after kick-off.")
+    return settle_match(db, match, actor, payload.home_score, payload.away_score)
+
+
+def lock_match(db: Session, match_id: str) -> SimulatedMatch:
     match = get_simulated_match(db, match_id, lock=True)
     if match is None:
         raise HTTPException(404, "Simulated match not found.")
+    return match
+
+
+@router.post("/simulated-matches/{match_id}/state", dependencies=mutation)
+def update_match_state(match_id: str, payload: MatchStateInput, db: Db, actor: Actor) -> dict:
+    match = lock_match(db, match_id)
+    home, away = payload.home_score, payload.away_score
+    if (home is None) != (away is None):
+        raise HTTPException(422, "Enter both scores or leave both blank.")
+    if payload.status == "ended":
+        if home is None:
+            raise HTTPException(422, "Enter both final scores.")
+        return settle_match(db, match, actor, home, away)
     if match.finalized_at is not None:
-        if (match.home_score, match.away_score) != (payload.home_score, payload.away_score):
+        raise HTTPException(409, "This match has already been settled.")
+    if payload.status == "upcoming":
+        kickoff = payload.kickoff.astimezone(timezone.utc) if payload.kickoff else kickoff_utc(match)
+        if kickoff <= datetime.now(timezone.utc):
+            raise HTTPException(422, "Choose a future kick-off to mark this match Upcoming.")
+        match.kickoff = kickoff
+        match.status_override = None
+        match.home_score = match.away_score = None
+    else:
+        match.status_override = "ongoing"
+        match.home_score, match.away_score = home, away
+    fixture = simulated_fixture(match)
+    db.commit()
+    return {**fixture, "settled_count": 0}
+
+
+def settle_match(db: Session, match: SimulatedMatch, actor: User, home: int, away: int) -> dict:
+    if match.finalized_at is not None:
+        if (match.home_score, match.away_score) != (home, away):
             raise HTTPException(409, "This match already has a final score.")
         return {**simulated_fixture(match), "settled_count": match.settled_count}
 
-    now = datetime.now(timezone.utc)
-    if kickoff_utc(match) > now:
-        raise HTTPException(409, "A final score can only be entered after kick-off.")
-    match.home_score = payload.home_score
-    match.away_score = payload.away_score
-    match.finalized_at = now
+    match.home_score = home
+    match.away_score = away
+    match.finalized_at = datetime.now(timezone.utc)
+    match.status_override = None
     match.finalized_by = actor.id
     fixture = simulated_fixture(match)
     predictions = db.scalars(
-        select(Prediction).where(Prediction.match_id == match_id, Prediction.is_resolved.is_(False))
+        select(Prediction).where(Prediction.match_id == fixture["id"], Prediction.is_resolved.is_(False))
         .order_by(Prediction.user_id)
     ).all()
     match.settled_count = sum(_settle_prediction(db, prediction, fixture["winner"]) for prediction in predictions)

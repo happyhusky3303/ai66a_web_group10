@@ -76,6 +76,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
         # Legacy accounts have no email yet; new registrations use normalized unique emails.
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users (email)"))
+        simulated_columns = {column["name"] for column in inspect(conn).get_columns("simulated_matches")}
+        for col, col_type in [("status_override", "VARCHAR(16)"), ("details", "JSON")]:
+            if col not in simulated_columns:
+                conn.execute(text(f"ALTER TABLE simulated_matches ADD COLUMN {col} {col_type}"))
     bootstrap_admin()
     yield
 

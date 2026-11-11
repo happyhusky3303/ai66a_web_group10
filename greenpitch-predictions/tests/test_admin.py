@@ -167,6 +167,64 @@ def test_simulated_matches_settle_into_shared_points(client, admin_client, monke
         assert db.get(User, user_id).points == 1100
 
 
+def test_simulated_fixture_details_and_manual_state(client, admin_client):
+    register(client)
+    kickoff = datetime.now(timezone.utc) + timedelta(hours=1)
+    response = admin_client.post("/api/admin/simulated-matches", json={
+        "home_team": "Green City", "away_team": "North FC", "competition": "Test League",
+        "kickoff": kickoff.isoformat(),
+        "details": {
+            "venue": "City Park", "matchday": 8, "status": "FINISHED",
+            "homeTeam": {"name": "Override", "shortName": "City", "crest": "https://example.com/city.svg"},
+            "referees": [{"name": "Test Referee"}], "score": {"fullTime": {"home": 99}, "halfTime": {"home": 0, "away": 0}},
+        },
+    })
+    assert response.status_code == 201, response.text
+    match_id = response.json()["id"]
+    fixture = client.get(f"/api/matches/{match_id}").json()
+    assert fixture["status"] == "Before"
+    assert fixture["home_crest"] == "https://example.com/city.svg"
+    assert fixture["provider_data"]["venue"] == "City Park"
+    assert fixture["provider_data"]["status"] == "SCHEDULED"
+    assert fixture["provider_data"]["homeTeam"]["name"] == "Green City"
+    assert fixture["provider_data"]["score"]["fullTime"]["home"] is None
+    assert fixture["provider_data"]["referees"][0]["name"] == "Test Referee"
+
+    path = f"/api/admin/simulated-matches/{match_id}/state"
+    pick = {"match_id": match_id, "predicted_winner": "home", "stake": 100}
+    assert client.post(path, json={"status": "ongoing"}).status_code == 403
+    assert admin_client.post(path, json={"status": "ongoing", "home_score": 0}).status_code == 422
+    live = admin_client.post(path, json={"status": "ongoing", "home_score": 0, "away_score": 1}).json()
+    assert live["status"] == "Ongoing" and live["home_score"] == 0 and live["winner"] is None
+    assert client.post("/api/predict", json=pick).status_code == 409
+
+    new_kickoff = kickoff + timedelta(hours=1)
+    upcoming = admin_client.post(path, json={"status": "upcoming", "kickoff": new_kickoff.isoformat()}).json()
+    assert upcoming["status"] == "Before" and upcoming["home_score"] is None
+    assert upcoming["utc_date"] == new_kickoff.isoformat()
+    assert client.post("/api/predict", json=pick).status_code == 201
+    assert admin_client.post(path, json={"status": "ended"}).status_code == 422
+
+    final = {"status": "ended", "home_score": 2, "away_score": 1}
+    for _ in range(2):
+        result = admin_client.post(path, json=final).json()
+        assert result["status"] == "Ended" and result["settled_count"] == 1
+    assert admin_client.post(path, json={"status": "upcoming"}).status_code == 409
+    assert admin_client.post(path, json={**final, "home_score": 3}).status_code == 409
+    assert client.get("/auth/me").json()["user"]["points"] == 1100
+
+
+def test_existing_simulated_fixtures_survive_schema_update(client, admin_client):
+    match_id = publish(admin_client)
+    with database.engine.begin() as conn:
+        conn.exec_driver_sql("ALTER TABLE simulated_matches DROP COLUMN status_override")
+        conn.exec_driver_sql("ALTER TABLE simulated_matches DROP COLUMN details")
+    with TestClient(client.app):
+        fixture = client.get(f"/api/matches/{match_id}").json()
+        assert fixture["status"] == "Before"
+        assert fixture["home_team"] == "Green City"
+
+
 def test_failed_settlement_rolls_back(client, admin_client, monkeypatch):
     user_id = register(client)
     match_id = publish(admin_client)

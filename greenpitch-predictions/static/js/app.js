@@ -415,11 +415,10 @@ function createMatchRow(match) {
   competition.className = "competition-name";
   competition.textContent = match.source === "simulated" ? match.competition + " · Simulated" : match.competition;
   const isEnded = match.status === "Ended";
-  const resultText = isEnded
-    ? typeof match.home_score === "number" && typeof match.away_score === "number"
-      ? `${match.home_score}–${match.away_score}`
-      : "FT"
-    : "vs";
+  const hasScore = typeof match.home_score === "number" && typeof match.away_score === "number";
+  const resultText = (isEnded || match.status === "Ongoing") && hasScore
+    ? `${match.home_score}–${match.away_score}`
+    : isEnded ? "FT" : "vs";
   const teams = createTeamPair(
     match.home_team,
     match.home_crest,
@@ -996,7 +995,6 @@ async function initMatchDetail() {
     const raw = match.provider_data || {};
     const home = raw.homeTeam || {};
     const away = raw.awayTeam || {};
-    const competition = raw.competition || {};
     const score = raw.score || {};
     const fullTime = score.fullTime || {};
     const status = match.status || "Unavailable";
@@ -1091,8 +1089,8 @@ async function initMatchDetail() {
     const fields = document.querySelector("#match-data-fields");
     appendProviderFields(fields, raw);
     document.querySelector("#provider-raw-data").textContent = JSON.stringify(raw, null, 2);
-    if (competition.emblem) {
-      document.querySelector("#detail-competition").textContent = competition.name || match.competition;
+    if (match.source === "simulated") {
+      document.querySelector(".raw-data-card summary").textContent = "View complete simulated match data";
     }
     content.classList.remove("hidden");
   } catch (error) {
