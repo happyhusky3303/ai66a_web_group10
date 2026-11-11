@@ -149,7 +149,7 @@ async function loadMatches() {
   hideNotice(notice);
 
   try {
-    const data = await apiRequest("/api/matches");
+    const data = await apiRequest("/api/matches", { signal: AbortSignal.timeout(15000) });
     const matches = data.matches || [];
     count.textContent = `${matches.length} fixture${matches.length === 1 ? "" : "s"}`;
     if (matches.length === 0) empty.classList.remove("hidden");
@@ -544,9 +544,11 @@ let myPredictionChoices = new Map();
 
 async function loadCurrentUser({ signal, propagateError = false } = {}) {
   let loadError = null;
+  let dailyReward;
   try {
     const result = await apiRequest("/auth/me", { signal });
     currentUser = result.authenticated ? result.user : null;
+    dailyReward = result.daily_reward;
   } catch (error) {
     currentUser = null;
     loadError = error;
@@ -570,13 +572,13 @@ async function loadCurrentUser({ signal, propagateError = false } = {}) {
       if (points) points.textContent = "—";
     }
   }
-  if (currentUser && result.daily_reward?.claimed) {
+  if (currentUser && dailyReward?.claimed) {
     showNotice(
       document.querySelector("#home-app-message")
         || document.querySelector("#my-app-message")
         || document.querySelector("#app-message")
         || document.querySelector("#detail-message"),
-      `Daily reward collected: +${formatPoints(result.daily_reward.points)} points. Available balance: ${formatPoints(currentUser.points)} points.`,
+      `Daily reward collected: +${formatPoints(dailyReward.points)} points. Available balance: ${formatPoints(currentUser.points)} points.`,
       "success",
     );
   }
@@ -614,11 +616,11 @@ async function initMatchCenter() {
   document.querySelector("#match-league-filter")?.addEventListener("change", applyMatchFilter);
   document.querySelector("#show-predicted-filter")?.addEventListener("change", applyMatchFilter);
   addLogoutHandler();
-  await loadCurrentUser();
+  await loadCurrentUser({ signal: AbortSignal.timeout(8000) });
   let predictionLoadError = null;
   if (currentUser) {
     try {
-      const data = await apiRequest("/api/my-predictions");
+      const data = await apiRequest("/api/my-predictions", { signal: AbortSignal.timeout(8000) });
       predictedMatchIds = new Set(data.predictions.map((item) => String(item.match_id)));
       myPredictionChoices = new Map(
         data.predictions.map((item) => [String(item.match_id), item]),
