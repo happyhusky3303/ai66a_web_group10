@@ -100,6 +100,14 @@ For production behind HTTPS, set `SESSION_HTTPS_ONLY=true` in `.env`.
 
 ## Admin setup
 
+On Render, set `BOOTSTRAP_ADMIN_USERNAME=happyhusky` in the service environment
+and deploy the updated image. Confirm the username belongs to your existing
+account before setting the variable. Startup grants the role after the schema
+update using the server database. If the account is missing or inactive, startup
+logs a warning and continues. Once the admin links appear, remove the variable.
+The granted role persists and future restarts will respect a manual revocation.
+For local Docker Compose, the same setting can be added to `.env`.
+
 Back up the app database before upgrading. Start GreenPitch once against that
 database to apply the startup schema updates. Register the account through the
 regular sign-up flow, then run the following from the app environment using the

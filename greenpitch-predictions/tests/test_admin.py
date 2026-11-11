@@ -53,6 +53,39 @@ def move_past_kickoff(match_id):
                    .values(kickoff=datetime.now(timezone.utc) - timedelta(hours=1)))
 
 
+def test_startup_promotes_only_the_configured_active_account(client, monkeypatch):
+    user_id = register(client, "happyhusky")
+    with database.SessionLocal.begin() as db:
+        db.add(User(username="other_user", password_hash="test-only"))
+    monkeypatch.setenv("BOOTSTRAP_ADMIN_USERNAME", "happyhusky")
+
+    for _ in range(2):
+        with TestClient(client.app):
+            with database.SessionLocal() as db:
+                user = db.get(User, user_id)
+                assert user.is_admin and user.points == 1000
+                assert not db.scalar(select(User).where(User.username == "other_user")).is_admin
+
+    assert client.get("/admin/users").status_code == 200
+    monkeypatch.delenv("BOOTSTRAP_ADMIN_USERNAME")
+    with database.SessionLocal.begin() as db:
+        db.get(User, user_id).is_admin = False
+    with TestClient(client.app):
+        assert client.get("/admin/users").status_code == 403
+
+
+@pytest.mark.parametrize("account_exists", [False, True])
+def test_startup_skips_missing_or_inactive_admin_account(client, monkeypatch, account_exists):
+    if account_exists:
+        with database.SessionLocal.begin() as db:
+            db.add(User(username="happyhusky", password_hash="test-only", is_active=False))
+    monkeypatch.setenv("BOOTSTRAP_ADMIN_USERNAME", "happyhusky")
+    with TestClient(client.app):
+        with database.SessionLocal() as db:
+            account = db.scalar(select(User).where(User.username == "happyhusky"))
+            assert not account.is_admin if account_exists else account is None
+
+
 def test_existing_accounts_keep_balances_and_default_to_regular_role(client):
     user_id = register(client)
     with database.engine.begin() as conn:

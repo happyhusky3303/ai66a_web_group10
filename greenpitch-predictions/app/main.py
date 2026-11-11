@@ -20,6 +20,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine, get_db
+from app.models import User
 from app.routers import admin, auth, matches, predictions
 from app.utils.rate_limit import limiter
 
@@ -39,7 +40,7 @@ if not session_secret:
     logger.warning("SESSION_SECRET_KEY is unset; sessions will expire when the app restarts.")
 
 
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, select, text, update
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -75,7 +76,24 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_type}"))
         # Legacy accounts have no email yet; new registrations use normalized unique emails.
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users (email)"))
+    bootstrap_admin()
     yield
+
+
+def bootstrap_admin() -> None:
+    username = os.getenv("BOOTSTRAP_ADMIN_USERNAME", "").strip()
+    if not username:
+        return
+    active_account = (User.username == username, User.is_active.is_(True))
+    with engine.begin() as conn:
+        result = conn.execute(
+            update(User).where(*active_account, User.is_admin.is_(False)).values(is_admin=True)
+        )
+        account_found = result.rowcount == 1 or conn.scalar(select(User.id).where(*active_account)) is not None
+    if result.rowcount == 1:
+        logger.info("Granted admin access to configured account %r.", username)
+    elif not account_found:
+        logger.warning("Startup admin account %r was not found or is inactive.", username)
 
 
 app = FastAPI(title="GreenPitch Predictions", lifespan=lifespan)
