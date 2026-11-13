@@ -126,6 +126,35 @@
             </article>
           </section>
         </div>
+        <section class="card home-leaderboard" aria-labelledby="leaderboard-heading">
+
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">PLAYER RANKINGS</p>
+              <h2 id="leaderboard-heading">🏆 Leaderboard</h2>
+            </div>
+            <button id="leaderboard-refresh"
+                    class="button button-outline"
+                    type="button">
+              Refresh
+            </button>
+          </div>
+
+          <div id="leaderboard-loading" class="loading-state">
+            Loading leaderboard...
+          </div>
+
+          <p id="leaderboard-empty"
+            class="empty-state hidden">
+            No players available.
+          </p>
+
+          <ol id="leaderboard-list"
+              class="leaderboard-list"
+              aria-label="Player rankings">
+          </ol>
+
+        </section>
       </main>
       <footer class="footer"><span>GREENPITCH / FOOTBALL PREDICTIONS</span><span>POINTS ONLY · NO REAL-MONEY BETTING</span></footer>
     </div>

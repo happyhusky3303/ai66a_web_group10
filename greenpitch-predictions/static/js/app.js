@@ -572,6 +572,7 @@ async function loadLeaderboard() {
   const empty = document.querySelector("#leaderboard-empty");
   loading.classList.remove("hidden");
   list.replaceChildren();
+  empty.textContent = "No players available.";
   empty.classList.add("hidden");
   try {
     const data = await apiRequest("/api/leaderboard");
@@ -820,13 +821,7 @@ async function initMatchCenter() {
     }
   }
 
-  await Promise.all([
-    loadMatches(),
-    loadLeaderboard()
-  ]);
-
-  document.querySelector("#leaderboard-refresh")
-    ?.addEventListener("click", loadLeaderboard);
+  await loadMatches();
   if (predictionLoadError) {
     showNotice(
       document.querySelector("#app-message"),
@@ -1110,6 +1105,8 @@ function renderHomeAnalytics(data) {
 
 async function initHome() {
   addLogoutHandler();
+  document.querySelector("#leaderboard-refresh").addEventListener("click", loadLeaderboard);
+  void loadLeaderboard();
   const loading = document.querySelector("#home-loading");
   const dashboard = document.querySelector("#home-dashboard");
   const authRequired = document.querySelector("#home-auth-required");
