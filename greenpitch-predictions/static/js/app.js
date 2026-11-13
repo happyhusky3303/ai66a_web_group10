@@ -163,6 +163,7 @@ async function loadMatches() {
     const ongoing = [];
     const upcoming = [];
     const ended = [];
+    const awaiting = [];
 
     for (const match of matches) {
       if (match.status === "Ongoing") {
@@ -170,7 +171,7 @@ async function loadMatches() {
       } else if (match.status === "Before") {
         upcoming.push(match);
       } else if (match.status === "Awaiting result") {
-        awaitingBody?.append(createMatchRow(match));
+        awaiting.push(match);
       } else {
         ended.push(match);
       }
@@ -180,20 +181,21 @@ async function loadMatches() {
     if (ongoingCount) ongoingCount.textContent = `${ongoing.length} live`;
     if (ongoing.length === 0) ongoingEmpty?.classList.remove("hidden");
     else ongoingEmpty?.classList.add("hidden");
-    for (const match of ongoing) ongoingBody?.append(createMatchRow(match));
+    renderFixtureWeeks(ongoingBody, ongoing);
 
     // Upcoming group
     if (upcomingCount) upcomingCount.textContent = `${upcoming.length} upcoming`;
     if (upcoming.length === 0) upcomingEmpty?.classList.remove("hidden");
     else upcomingEmpty?.classList.add("hidden");
-    for (const match of upcoming) upcomingBody?.append(createMatchRow(match));
+    renderFixtureWeeks(upcomingBody, upcoming);
 
     // Ended group
     if (endedCount) endedCount.textContent = `${ended.length} ended`;
     if (ended.length === 0) endedEmpty?.classList.remove("hidden");
     else endedEmpty?.classList.add("hidden");
-    for (const match of ended) endedBody?.append(createMatchRow(match));
+    renderFixtureWeeks(endedBody, ended, true);
 
+    renderFixtureWeeks(awaitingBody, awaiting);
     applyMatchFilter();
   } catch (error) {
     count.textContent = "Unavailable";
@@ -301,6 +303,10 @@ function applyMatchFilter() {
       }
     });
 
+    for (const week of element.querySelectorAll(".fixture-week")) {
+      week.classList.toggle("hidden", !week.querySelector(".fixture-card:not(.hidden)"));
+    }
+
     if (countEl) countEl.textContent = `${visibleInGroup} ${suffix}`;
 
     if (visibleInGroup === 0) {
@@ -402,6 +408,33 @@ function createTeamPair(homeName, homeCrest, awayName, awayCrest, centerText = "
     createTeamBadge(awayName, awayCrest, "away"),
   );
   return pair;
+}
+
+function renderFixtureWeeks(container, matches, newestFirst = false) {
+  if (!container) return;
+  const weeks = new Map();
+  const format = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
+  for (const match of matches) {
+    const kickoff = new Date(match.utc_date || NaN);
+    const monday = new Date(kickoff);
+    monday.setHours(0, 0, 0, 0);
+    monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
+    const key = Number.isNaN(+monday) ? Infinity : +monday;
+    if (!weeks.has(key)) weeks.set(key, []);
+    weeks.get(key).push(match);
+  }
+
+  const datedWeeks = [...weeks.keys()].filter(Number.isFinite).sort((a, b) => newestFirst ? b - a : a - b);
+  if (weeks.has(Infinity)) datedWeeks.push(Infinity);
+  for (const key of datedWeeks) {
+    const section = document.createElement("section");
+    section.className = "fixture-week";
+    const heading = document.createElement("h4");
+    heading.textContent = Number.isFinite(key) ? "Week of " + format.format(key) : "Kickoff date unavailable";
+    section.append(heading);
+    for (const match of weeks.get(key)) section.append(createMatchRow(match));
+    container.append(section);
+  }
 }
 
 function createMatchRow(match) {
