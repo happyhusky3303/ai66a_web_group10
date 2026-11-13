@@ -759,7 +759,14 @@ async function initMatchCenter() {
       predictionLoadError = error;
     }
   }
-  await loadMatches();
+
+  await Promise.all([
+    loadMatches(),
+    loadLeaderboard()
+  ]);
+
+  document.querySelector("#leaderboard-refresh")
+    ?.addEventListener("click", loadLeaderboard);
   if (predictionLoadError) {
     showNotice(
       document.querySelector("#app-message"),
