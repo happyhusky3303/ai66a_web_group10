@@ -221,6 +221,9 @@ async def _fetch_matches() -> list[dict[str, Any]]:
 @limiter.limit("20/minute")
 async def list_matches(request: Request, response: Response, db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
     simulated = [simulated_fixture(item) for item in db.scalars(select(SimulatedMatch))]
+    saved_ended = [fixture.payload for fixture in db.scalars(
+        select(ProviderFixture).where(ProviderFixture.payload["status"].as_string() == "Ended")
+    )]
     live_data_unavailable = False
     if os.getenv("MATCH_CENTER_FROM_DATABASE") == "1":
         window = fixture_window()
@@ -234,17 +237,22 @@ async def list_matches(request: Request, response: Response, db: Annotated[Sessi
         try:
             matches = await asyncio.wait_for(_fetch_matches(), timeout=4) if simulated else await _fetch_matches()
         except (HTTPException, asyncio.TimeoutError):
-            if not simulated:
+            if not simulated and not saved_ended:
                 raise
             matches = []
             live_data_unavailable = True
         store_fixtures(db, matches)
         db.commit()
-    if simulated:
-        matches = sorted([*matches, *simulated], key=lambda item: (item.get("utc_date") or "", item["id"]))
+    provider_matches = {item["id"]: item for item in matches}
+    for fixture in saved_ended:
+        provider_matches.setdefault(fixture["id"], fixture)
+    matches = sorted(
+        [*provider_matches.values(), *simulated],
+        key=lambda item: (item.get("utc_date") or "", item["id"]),
+    )
     return {
         "matches": matches,
-        **({"live_data_unavailable": live_data_unavailable} if simulated else {}),
+        **({"live_data_unavailable": live_data_unavailable} if simulated or live_data_unavailable else {}),
         "fetched_at": _cache_fetched_at,
         "cache_ttl_seconds": CACHE_TTL_SECONDS,
     }
