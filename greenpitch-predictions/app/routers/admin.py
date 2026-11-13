@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import AdminUserChange, Prediction, SimulatedMatch, User
+from app.models import PointsEvent, AdminUserChange, Prediction, SimulatedMatch, User
 from app.routers.auth import get_current_user
 from app.routers.predictions import _settle_prediction
 from app.simulated_matches import get_simulated_match, kickoff_utc, simulated_fixture
@@ -224,6 +224,8 @@ def change_user(db: Session, actor: User, user_id: int, action: str, payload: Ch
         if not payload.delta or after > MAX_POINTS or (payload.delta < 0 and after < 0):
             raise HTTPException(422, "Enter a nonzero adjustment within the available balance.")
         user.points = after
+        db.add(PointsEvent(user_id=user.id, delta=payload.delta, kind="adjustment",
+                           occurred_at=datetime.now(timezone.utc)))
     elif isinstance(payload, StatusInput):
         before = user.is_active
         after = user.is_active = payload.active

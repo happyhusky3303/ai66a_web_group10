@@ -658,6 +658,7 @@ function initDailyGift() {
       currentUser = result.user;
       dailyGift = result.daily_reward;
       giftBalanceRevision++;
+      if (document.querySelector("#points-history")) void loadPointsHistory();
       for (const selector of ["#user-points", "#kpi-points"]) {
         const balance = document.querySelector(selector);
         if (balance) balance.textContent = formatPoints(currentUser.points);
@@ -797,6 +798,118 @@ function renderBarChart(container, entries, total) {
   }
 }
 
+function renderWeeklyResults(predictions) {
+  const container = document.querySelector("#weekly-results");
+  const day = 86400000;
+  const now = new Date();
+  const monday = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+    - ((now.getUTCDay() + 6) % 7) * day;
+  const start = monday - 49 * day;
+  const weeks = Array.from({ length: 8 }, () => ({ correct: 0, incorrect: 0 }));
+  for (const item of predictions) {
+    if (!item.is_resolved || typeof item.won !== "boolean" || !item.utc_date) continue;
+    const index = Math.floor((Date.parse(item.utc_date) - start) / (7 * day));
+    if (weeks[index]) weeks[index][item.won ? "correct" : "incorrect"]++;
+  }
+  container.replaceChildren();
+  const max = Math.max(...weeks.map(({ correct, incorrect }) => correct + incorrect));
+  if (!max) {
+    container.textContent = "No resolved predictions in this period.";
+    return;
+  }
+  const date = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+  weeks.forEach(({ correct, incorrect }, index) => {
+    const row = document.createElement("div");
+    row.className = "weekly-row";
+    const label = document.createElement("span");
+    label.textContent = date.format(start + index * 7 * day);
+    const track = document.createElement("span");
+    track.className = "weekly-track";
+    track.setAttribute("aria-hidden", "true");
+    for (const [count, color] of [[correct, "green"], [incorrect, "red"]]) {
+      const bar = document.createElement("span");
+      bar.className = "bar-" + color;
+      bar.style.width = (count / max * 100) + "%";
+      track.append(bar);
+    }
+    const counts = document.createElement("span");
+    counts.textContent = correct + " correct / " + incorrect + " incorrect";
+    row.append(label, track, counts);
+    container.append(row);
+  });
+}
+
+let pointsHistoryRequest = 0;
+
+async function loadPointsHistory() {
+  const container = document.querySelector("#points-history");
+  if (!container) return;
+  const request = ++pointsHistoryRequest;
+  try {
+    const data = await apiRequest("/api/points-history", { signal: AbortSignal.timeout(10000) });
+    if (request !== pointsHistoryRequest) return;
+    container.replaceChildren();
+    if (!data.events.some((event) => event.delta)) {
+      container.textContent = formatPoints(data.balance) + " pts · No recorded changes in this period.";
+      return;
+    }
+
+    const dates = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+    const labels = { opening: "Starting balance", stake: "Prediction stake", payout: "Winning payout",
+      gift: "Daily gift", adjustment: "Admin adjustment", loss: "Prediction loss" };
+    const events = data.events;
+    const start = Date.parse(events[0].kind === "opening" ? events[0].at : data.since);
+    const end = Date.now();
+    const span = Math.max(1, end - start);
+    const balances = [data.opening, ...events.map((event) => event.balance)];
+    const min = balances.reduce((a, b) => Math.min(a, b));
+    const max = balances.reduce((a, b) => Math.max(a, b));
+    const y = (balance) => 126 - 108 * (balance - min) / Math.max(1, max - min);
+    const ns = "http://www.w3.org/2000/svg";
+    const chart = document.createElementNS(ns, "svg");
+    chart.setAttribute("viewBox", "0 0 480 144");
+    chart.setAttribute("class", "points-chart");
+    chart.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(ns, "path");
+    let geometry = "M 4 " + y(data.opening);
+    for (const event of events) {
+      const x = 4 + 472 * Math.min(1, Math.max(0, (Date.parse(event.at) - start) / span));
+      geometry += " H " + x + " V " + y(event.balance);
+    }
+    path.setAttribute("d", geometry + " H 476");
+    chart.append(path);
+
+    const range = document.createElement("p");
+    range.className = "muted";
+    const axisDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+    range.textContent = axisDate.format(start) + " – " + axisDate.format(end)
+      + " · " + formatPoints(min) + "–" + formatPoints(max) + " pts";
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = "View point changes";
+    const changes = document.createElement("ul");
+    changes.className = "points-changes";
+    for (const event of events.slice().reverse()) {
+      const entry = document.createElement("li");
+      const delta = event.delta ? (event.delta > 0 ? "+" : "−") + formatPoints(Math.abs(event.delta)) + " pts · " : "";
+      entry.textContent = dates.format(new Date(event.at)) + " · " + labels[event.kind]
+        + " · " + delta + formatPoints(event.balance) + " pts balance";
+      changes.append(entry);
+    }
+    details.append(summary, changes);
+    container.append(chart, range, details);
+  } catch {
+    if (request !== pointsHistoryRequest) return;
+    container.textContent = "Points history is temporarily unavailable. ";
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "text-button";
+    retry.textContent = "Retry";
+    retry.addEventListener("click", loadPointsHistory, { once: true });
+    container.append(retry);
+  }
+}
+
 function renderHomeAnalytics(data) {
   const predictions = data.predictions || [];
   const resolved = predictions.filter((item) => item.won === true || item.won === false);
@@ -930,6 +1043,8 @@ async function initHome() {
       const data = await apiRequest("/api/my-matches", { signal: controller.signal });
       if (balanceRevision !== giftBalanceRevision) data.user_points = currentUser.points;
       renderHomeAnalytics(data);
+      renderWeeklyResults(data.predictions || []);
+      void loadPointsHistory();
       dashboard.classList.remove("hidden");
       if (data.live_data_unavailable) showNotice(notice, "Showing saved results. Live match updates are temporarily unavailable.");
     } catch (error) {

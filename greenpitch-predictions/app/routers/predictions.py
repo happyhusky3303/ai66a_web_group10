@@ -2,6 +2,7 @@ import asyncio
 import hmac
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
@@ -11,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Prediction, SimulatedMatch, User
+from app.models import PointsEvent, Prediction, SimulatedMatch, User
 from app.routers.auth import get_current_user
 from app.routers.matches import _fetch_matches
 from app.simulated_matches import get_simulated_match, simulated_fixture, simulated_match_id
@@ -117,6 +118,8 @@ async def create_prediction(
         utc_date=match.get("utc_date"),
     )
     db.add(prediction)
+    db.add(PointsEvent(user_id=user.id, delta=-payload.stake, kind="stake",
+                       occurred_at=datetime.now(timezone.utc)))
     try:
         db.commit()
     except IntegrityError as exc:
@@ -164,7 +167,43 @@ def _settle_prediction(db: Session, prediction: Prediction, actual_winner: str) 
             .where(User.id == prediction.user_id)
             .values(points=User.points + balance_change)
         )
+        db.add(PointsEvent(user_id=prediction.user_id, delta=balance_change,
+                           kind="payout" if won else "loss", occurred_at=datetime.now(timezone.utc)))
     return True
+
+
+@router.get("/api/points-history")
+@limiter.limit("30/minute")
+def get_points_history(
+    request: Request,
+    response: Response,
+    db: Annotated[Session, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    # Read the balance and its events in one statement so a concurrent
+    # adjustment cannot appear on only one side of the calculation.
+    rows = db.execute(
+        select(User.points, PointsEvent)
+        .outerjoin(PointsEvent, (PointsEvent.user_id == User.id) & (PointsEvent.occurred_at >= cutoff))
+        .where(User.id == user.id)
+        .order_by(PointsEvent.id)
+    ).all()
+    balance = rows[0][0]
+    events = [event for _, event in rows if event is not None]
+    opening = balance - sum(event.delta for event in events)
+    history = []
+    running = opening
+    for event in events:
+        running += event.delta
+        timestamp = event.occurred_at
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        history.append({
+            "at": timestamp.isoformat(), "kind": event.kind,
+            "delta": event.delta, "balance": running,
+        })
+    return {"balance": balance, "opening": opening, "events": history, "since": cutoff.isoformat()}
 
 
 @router.get("/api/my-matches")

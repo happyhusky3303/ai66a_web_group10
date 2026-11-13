@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import PointsEvent, User
 from app.utils.rate_limit import limiter
 
 
@@ -116,6 +116,8 @@ def award_daily_reward(db: Session, user: User, today: date) -> bool:
     )
     claimed = result.rowcount == 1
     if claimed:
+        db.add(PointsEvent(user_id=user.id, delta=DAILY_REWARD_POINTS,
+                           kind="gift", occurred_at=datetime.now(timezone.utc)))
         db.commit()
     db.refresh(user)
     return claimed
@@ -148,6 +150,9 @@ def register(request: Request, response: Response, credentials: SignupInput,
         user = User(username=credentials.username, email=credentials.email,
                     password_hash=hash_password(credentials.password))
         db.add(user)
+        db.flush()
+        db.add(PointsEvent(user_id=user.id, delta=0, kind="opening",
+                           occurred_at=datetime.now(timezone.utc)))
         db.commit()
         db.refresh(user)
     except HTTPException:

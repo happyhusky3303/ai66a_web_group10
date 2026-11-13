@@ -79,3 +79,13 @@ class AdminUserChange(Base):
     before: Mapped[str] = mapped_column(String(256))
     after: Mapped[str] = mapped_column(String(256))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PointsEvent(Base):
+    __tablename__ = "points_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    delta: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(24))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

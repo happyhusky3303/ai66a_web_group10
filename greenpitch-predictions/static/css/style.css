@@ -353,3 +353,44 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
   .topbar:has([data-admin-link]:not(.hidden)) { flex-wrap: wrap; padding-block: .75rem; }
   .top-nav:has([data-admin-link]:not(.hidden)) { flex-wrap: wrap; }
 }
+
+.trend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.points-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-bottom: 1px solid currentColor;
+}
+.points-chart path {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.points-changes {
+  max-height: 13rem;
+  overflow: auto;
+  padding-inline-start: 1.25rem;
+}
+.weekly-row {
+  display: grid;
+  grid-template-columns: 4.25rem minmax(1rem, 1fr) auto;
+  gap: .5rem;
+  align-items: center;
+  margin-block: .4rem;
+  font-size: .8rem;
+}
+.weekly-track {
+  display: flex;
+  height: .55rem;
+  border-radius: .25rem;
+  overflow: hidden;
+  background: rgba(128, 128, 128, .2);
+}
+@media (max-width: 850px) {
+  .trend-grid { grid-template-columns: minmax(0, 1fr); }
+}
