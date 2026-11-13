@@ -221,8 +221,16 @@ async def _fetch_matches() -> list[dict[str, Any]]:
 @limiter.limit("20/minute")
 async def list_matches(request: Request, response: Response, db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
     simulated = [simulated_fixture(item) for item in db.scalars(select(SimulatedMatch))]
+    today = datetime.now(timezone.utc).date()
+    ended_from = (today - timedelta(days=7)).isoformat()
+    ended_until = (today + timedelta(days=1)).isoformat()
+    kickoff = ProviderFixture.payload["utc_date"].as_string()
     saved_ended = [fixture.payload for fixture in db.scalars(
-        select(ProviderFixture).where(ProviderFixture.payload["status"].as_string() == "Ended")
+        select(ProviderFixture).where(
+            ProviderFixture.payload["status"].as_string() == "Ended",
+            kickoff >= ended_from,
+            kickoff < ended_until,
+        )
     )]
     live_data_unavailable = False
     if os.getenv("MATCH_CENTER_FROM_DATABASE") == "1":
@@ -250,6 +258,11 @@ async def list_matches(request: Request, response: Response, db: Annotated[Sessi
         [*provider_matches.values(), *simulated],
         key=lambda item: (item.get("utc_date") or "", item["id"]),
     )
+    matches = [
+        item for item in matches
+        if item["status"] != "Ended"
+        or ended_from <= (item.get("utc_date") or "") < ended_until
+    ]
     return {
         "matches": matches,
         **({"live_data_unavailable": live_data_unavailable} if simulated or live_data_unavailable else {}),
