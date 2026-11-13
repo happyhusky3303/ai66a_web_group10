@@ -363,7 +363,15 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
   display: block;
   width: 100%;
   height: auto;
-  border-bottom: 1px solid currentColor;
+}
+.points-chart line {
+  stroke: currentColor;
+  opacity: .22;
+  vector-effect: non-scaling-stroke;
+}
+.points-chart text {
+  fill: currentColor;
+  font-size: 14px;
 }
 .points-chart path {
   fill: none;
@@ -378,11 +386,25 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 }
 .weekly-row {
   display: grid;
-  grid-template-columns: 4.25rem minmax(1rem, 1fr) auto;
-  gap: .5rem;
   align-items: center;
   margin-block: .4rem;
   font-size: .8rem;
+}
+#weekly-results {
+  display: grid;
+  grid-template-columns: 4.25rem minmax(1rem, 1fr) auto;
+  column-gap: .5rem;
+}
+.weekly-row {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+.weekly-scale {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid var(--muted);
+  color: var(--muted);
 }
 .weekly-track {
   display: flex;

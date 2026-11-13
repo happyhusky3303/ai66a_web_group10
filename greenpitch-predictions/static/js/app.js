@@ -812,11 +812,18 @@ function renderWeeklyResults(predictions) {
     if (weeks[index]) weeks[index][item.won ? "correct" : "incorrect"]++;
   }
   container.replaceChildren();
-  const max = Math.max(...weeks.map(({ correct, incorrect }) => correct + incorrect));
-  if (!max) {
-    container.textContent = "No resolved predictions in this period.";
-    return;
+  const max = Math.max(1, ...weeks.map(({ correct, incorrect }) => correct + incorrect));
+  const axis = document.createElement("div");
+  axis.className = "weekly-row weekly-axis";
+  const scale = document.createElement("span");
+  scale.className = "weekly-scale";
+  scale.setAttribute("aria-label", "Prediction count scale");
+  for (const tick of [0, max]) {
+    const label = document.createElement("span");
+    label.textContent = formatPoints(tick);
+    scale.append(label);
   }
+  axis.append(scale);
   const date = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
   weeks.forEach(({ correct, incorrect }, index) => {
     const row = document.createElement("div");
@@ -837,6 +844,7 @@ function renderWeeklyResults(predictions) {
     row.append(label, track, counts);
     container.append(row);
   });
+  container.append(axis);
 }
 
 let pointsHistoryRequest = 0;
@@ -860,23 +868,47 @@ async function loadPointsHistory() {
     const balances = [data.opening, ...events.map((event) => event.balance)];
     const min = balances.reduce((a, b) => Math.min(a, b));
     const max = balances.reduce((a, b) => Math.max(a, b));
-    const y = (balance) => 126 - 108 * (balance - min) / Math.max(1, max - min);
+    const step = 10 ** Math.ceil(Math.log10(Math.max(100, (max - min) / 3)));
+    const lower = Math.floor(min / step) * step;
+    const upper = Math.max(lower + step, Math.ceil(max / step) * step);
+    const y = (balance) => 126 - 108 * (balance - lower) / (upper - lower);
     const ns = "http://www.w3.org/2000/svg";
     const chart = document.createElementNS(ns, "svg");
     chart.setAttribute("viewBox", "0 0 480 144");
     chart.setAttribute("class", "points-chart");
-    chart.setAttribute("aria-hidden", "true");
-    if (!events.some((event) => event.delta)) {
-      chart.setAttribute("role", "img");
-      chart.setAttribute("aria-label", "No point changes recorded in the last 30 days");
-      chart.removeAttribute("aria-hidden");
+    chart.setAttribute("role", "img");
+    const hasChanges = events.some((event) => event.delta);
+    chart.setAttribute("aria-label", hasChanges
+      ? "Points balance over time. See point changes for details."
+      : "No point changes recorded in the last 30 days");
+
+    const left = Math.max(formatPoints(lower).length, formatPoints(upper).length) * 8 + 12;
+    const axis = document.createElementNS(ns, "line");
+    for (const [key, value] of Object.entries({ x1: left, x2: left, y1: 18, y2: 126 })) {
+      axis.setAttribute(key, value);
+    }
+    chart.append(axis);
+    for (let tick = lower; tick <= upper; tick += step) {
+      const grid = document.createElementNS(ns, "line");
+      const label = document.createElementNS(ns, "text");
+      for (const [key, value] of Object.entries({ x1: left, x2: 476, y1: y(tick), y2: y(tick) })) {
+        grid.setAttribute(key, value);
+      }
+      label.setAttribute("x", left - 7);
+      label.setAttribute("y", y(tick));
+      label.setAttribute("text-anchor", "end");
+      label.setAttribute("dominant-baseline", "middle");
+      label.textContent = formatPoints(tick);
+      chart.append(grid, label);
+    }
+    if (!hasChanges) {
       container.append(chart);
       return;
     }
     const path = document.createElementNS(ns, "path");
-    let geometry = "M 4 " + y(data.opening);
+    let geometry = "M " + left + " " + y(data.opening);
     for (const event of events) {
-      const x = 4 + 472 * Math.min(1, Math.max(0, (Date.parse(event.at) - start) / span));
+      const x = left + (476 - left) * Math.min(1, Math.max(0, (Date.parse(event.at) - start) / span));
       geometry += " H " + x + " V " + y(event.balance);
     }
     path.setAttribute("d", geometry + " H 476");
