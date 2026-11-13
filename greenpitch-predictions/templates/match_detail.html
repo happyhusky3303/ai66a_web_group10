@@ -39,7 +39,7 @@
         </section>
 
         <div id="detail-message" class="notice hidden" role="status" aria-live="polite"></div>
-        <div id="detail-loading" class="loading-state">Loading provider match data…</div>
+        <div id="detail-loading" class="loading-state">Loading match details…</div>
         <section id="detail-content" class="hidden">
           <article class="card match-hero">
             <div class="match-hero-meta">
@@ -53,6 +53,7 @@
               </div>
               <div class="score-center">
                 <strong id="detail-score" class="score-display">VS</strong>
+                <span id="detail-score-summary" class="muted hidden"></span>
                 <span id="detail-kickoff" class="muted"></span>
               </div>
               <div class="match-side">
@@ -80,20 +81,16 @@
             <div id="prediction-locked" class="prediction-locked hidden"></div>
           </article>
 
-          <section class="detail-lower-grid">
-            <article class="card analytics-card">
-              <div class="section-heading">
-                <div><p class="eyebrow">MATCH INFORMATION</p><h2>Fixture data</h2></div>
-              </div>
-              <div id="match-data-fields" class="match-data-fields"></div>
-            </article>
-            <article class="card analytics-card raw-data-card">
-              <details>
-                <summary>View complete provider response</summary>
-                <pre id="provider-raw-data" class="provider-raw-data"></pre>
-              </details>
-            </article>
-          </section>
+          <div class="detail-lower-grid">
+            <section id="match-information" class="card hidden">
+              <h2>Match information</h2>
+              <dl id="match-information-fields" class="match-data-fields"></dl>
+            </section>
+            <section id="match-goals" class="card hidden">
+              <h2>Goals</h2>
+              <ol id="match-goal-list" class="match-goal-list"></ol>
+            </section>
+          </div>
         </section>
       </main>
       <footer class="footer"><span>GREENPITCH / FOOTBALL PREDICTIONS</span><span>POINTS ONLY · NO REAL-MONEY BETTING</span></footer>

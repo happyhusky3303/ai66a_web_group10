@@ -47,17 +47,23 @@ def get_my_prediction_choices(
     response: Response,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
+    match_id: str | None = None,
 ) -> dict:
-    predictions = db.execute(
-        select(Prediction.match_id, Prediction.predicted_winner, Prediction.stake)
-        .where(Prediction.user_id == user.id)
-    ).all()
-    return {
-        "predictions": [
-            {"match_id": match_id, "predicted_winner": predicted_winner, "stake": stake}
-            for match_id, predicted_winner, stake in predictions
-        ]
-    }
+    query = select(Prediction).where(Prediction.user_id == user.id)
+    if match_id is not None:
+        query = query.where(Prediction.match_id == match_id)
+    choices = []
+    for prediction in db.scalars(query):
+        choice = {
+            "match_id": prediction.match_id,
+            "predicted_winner": prediction.predicted_winner,
+            "stake": prediction.stake,
+        }
+        if match_id is not None and prediction.is_resolved:
+            choice["won"] = prediction.won
+            choice["net_points"] = _prediction_points(prediction, prediction.won)[1]
+        choices.append(choice)
+    return {"predictions": choices}
 
 
 @router.post("/api/predict", status_code=status.HTTP_201_CREATED)

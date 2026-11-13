@@ -1124,28 +1124,57 @@ async function initHome() {
   await loadDashboard();
 }
 
-function appendProviderFields(container, value, path = "") {
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => appendProviderFields(container, item, path ? `${path} / ${index + 1}` : String(index + 1)));
-    return;
-  }
-  if (value && typeof value === "object") {
-    for (const [key, nested] of Object.entries(value)) {
-      appendProviderFields(container, nested, path ? `${path} / ${key}` : key);
+function renderMatchInformation(raw) {
+  const group = /^GROUP_([A-Z]+)$/.exec(raw.group)?.[1];
+  const round = {
+    FINAL: "Final", THIRD_PLACE: "Third-place match", SEMI_FINALS: "Semi-final",
+    QUARTER_FINALS: "Quarter-final", LAST_16: "Round of 16",
+    LAST_32: "Round of 32", LAST_64: "Round of 64",
+  }[raw.stage];
+  const phase = group ? `Group ${group}` : round || (Number.isInteger(raw.matchday) ? `Matchweek ${raw.matchday}` : "");
+  if (phase) document.querySelector("#detail-competition").append(` · ${phase}`);
+
+  const scoreSummary = [];
+  for (const [label, score] of [["Half-time", raw.score?.halfTime], ["Penalties", raw.score?.penalties]]) {
+    if (Number.isInteger(score?.home) && Number.isInteger(score?.away)) {
+      scoreSummary.push(`${label} ${score.home}–${score.away}`);
     }
-    return;
+  }
+  if (scoreSummary.length) {
+    const summary = document.querySelector("#detail-score-summary");
+    summary.textContent = scoreSummary.join(" · ");
+    summary.classList.remove("hidden");
   }
 
-  const field = document.createElement("div");
-  field.className = "match-data-field";
-  const label = document.createElement("span");
-  label.className = "match-data-label";
-  label.textContent = path.replaceAll("_", " ");
-  const content = document.createElement("strong");
-  content.className = "match-data-value";
-  content.textContent = value === null || value === "" ? "—" : String(value);
-  field.append(label, content);
-  container.append(field);
+  const fields = document.querySelector("#match-information-fields");
+  const referee = Array.isArray(raw.referees)
+    ? raw.referees.find((person) => person?.type === "REFEREE")?.name : null;
+  for (const [label, value] of [["Stadium", raw.venue], ["Referee", referee]]) {
+    if (typeof value !== "string" || !value.trim()) continue;
+    const field = document.createElement("div");
+    field.className = "match-data-field";
+    const term = document.createElement("dt");
+    term.className = "match-data-label";
+    term.textContent = label;
+    const description = document.createElement("dd");
+    description.className = "match-data-value";
+    description.textContent = value;
+    field.append(term, description);
+    fields.append(field);
+  }
+  if (fields.childElementCount) document.querySelector("#match-information").classList.remove("hidden");
+
+  const goals = document.querySelector("#match-goal-list");
+  for (const goal of Array.isArray(raw.goals) ? raw.goals : []) {
+    if (!Number.isInteger(goal?.minute) || !goal.scorer?.name) continue;
+    const item = document.createElement("li");
+    const addedTime = goal.injuryTime > 0 ? `+${goal.injuryTime}` : "";
+    const team = goal.team?.name ? ` · ${goal.team.name}` : "";
+    const type = goal.type === "OWN" ? " (own goal)" : goal.type === "PENALTY" ? " (penalty)" : "";
+    item.textContent = `${goal.minute}${addedTime}′ · ${goal.scorer.name}${type}${team}`;
+    goals.append(item);
+  }
+  if (goals.childElementCount) document.querySelector("#match-goals").classList.remove("hidden");
 }
 
 async function initMatchDetail() {
@@ -1161,7 +1190,7 @@ async function initMatchDetail() {
     let predictionLookupFailed = false;
     if (currentUser) {
       try {
-        const data = await apiRequest("/api/my-predictions");
+        const data = await apiRequest(`/api/my-predictions?match_id=${encodeURIComponent(match.id)}`);
         existingPrediction = data.predictions.find((item) => String(item.match_id) === String(match.id)) || null;
       } catch (error) {
         predictionLookupFailed = true;
@@ -1215,13 +1244,19 @@ async function initMatchDetail() {
     if (existingPrediction) {
       predictionPanel.classList.add("hidden");
       locked.classList.remove("hidden");
-      if (existingPrediction.predicted_winner === "home") {
-        locked.textContent = `You predicted ${match.home_team} to win.`;
-      } else if (existingPrediction.predicted_winner === "away") {
-        locked.textContent = `You predicted ${match.away_team} to win.`;
-      } else {
-        locked.textContent = "You predicted a draw.";
+      const pick = { home: match.home_team, away: match.away_team, draw: "Draw" }[existingPrediction.predicted_winner];
+      const summary = [`Your pick: ${pick}`];
+      if (existingPrediction.stake != null) summary.push(`${formatPoints(existingPrediction.stake)} pts staked`);
+      if (typeof existingPrediction.won === "boolean") {
+        const points = existingPrediction.net_points;
+        summary.push(existingPrediction.won ? "Correct" : "Incorrect",
+          `${points > 0 ? "+" : ""}${formatPoints(points)} pts net`);
+      } else if (status === "Ongoing") {
+        summary.push("In progress");
+      } else if (status === "Ended" || status === "Awaiting result") {
+        summary.push("Awaiting settlement");
       }
+      locked.textContent = summary.join(" · ");
     } else if (predictionLookupFailed) {
       predictionPanel.classList.add("hidden");
       locked.classList.remove("hidden");
@@ -1262,12 +1297,7 @@ async function initMatchDetail() {
       }
     }
 
-    const fields = document.querySelector("#match-data-fields");
-    appendProviderFields(fields, raw);
-    document.querySelector("#provider-raw-data").textContent = JSON.stringify(raw, null, 2);
-    if (match.source === "simulated") {
-      document.querySelector(".raw-data-card summary").textContent = "View complete simulated match data";
-    }
+    renderMatchInformation(raw);
     content.classList.remove("hidden");
   } catch (error) {
     showNotice(message, error.message);
