@@ -849,10 +849,6 @@ async function loadPointsHistory() {
     const data = await apiRequest("/api/points-history", { signal: AbortSignal.timeout(10000) });
     if (request !== pointsHistoryRequest) return;
     container.replaceChildren();
-    if (!data.events.some((event) => event.delta)) {
-      container.textContent = formatPoints(data.balance) + " pts · No recorded changes in this period.";
-      return;
-    }
 
     const dates = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
     const labels = { opening: "Starting balance", stake: "Prediction stake", payout: "Winning payout",
@@ -870,6 +866,13 @@ async function loadPointsHistory() {
     chart.setAttribute("viewBox", "0 0 480 144");
     chart.setAttribute("class", "points-chart");
     chart.setAttribute("aria-hidden", "true");
+    if (!events.some((event) => event.delta)) {
+      chart.setAttribute("role", "img");
+      chart.setAttribute("aria-label", "No point changes recorded in the last 30 days");
+      chart.removeAttribute("aria-hidden");
+      container.append(chart);
+      return;
+    }
     const path = document.createElementNS(ns, "path");
     let geometry = "M 4 " + y(data.opening);
     for (const event of events) {
