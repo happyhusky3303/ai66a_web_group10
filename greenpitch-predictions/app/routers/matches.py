@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
@@ -11,12 +12,15 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import ProviderFixture, SimulatedMatch
+from app.observability import log_event
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from starlette.concurrency import run_in_threadpool
 from app.simulated_matches import get_simulated_match, simulated_fixture
 
 
 router = APIRouter(prefix="/api", tags=["matches"])
+logger = logging.getLogger(__name__)
 CACHE_TTL_SECONDS = 300
 FOOTBALL_DATA_URL = os.getenv("FOOTBALL_DATA_URL", "https://api.football-data.org/v4/matches")
 _cache_lock = asyncio.Lock()
@@ -71,6 +75,38 @@ def store_fixtures(db: Session, fixtures: list[dict]) -> None:
         ))
 
 
+def _load_database_match_data(db: Session, from_database: bool) -> tuple[list[dict], list[dict], list[dict] | None]:
+    simulated = [simulated_fixture(item) for item in db.scalars(select(SimulatedMatch))]
+    saved_ended = [fixture.payload for fixture in db.scalars(
+        select(ProviderFixture).where(ProviderFixture.payload["status"].as_string() == "Ended")
+    )]
+    database_matches = None
+    if from_database:
+        window = fixture_window()
+        kickoff = ProviderFixture.payload["utc_date"].as_string()
+        database_matches = [fixture.payload for fixture in db.scalars(
+            select(ProviderFixture)
+            .where(kickoff >= window["dateFrom"], kickoff < window["dateTo"])
+            .order_by(kickoff, ProviderFixture.id)
+        )]
+    return simulated, saved_ended, database_matches
+
+
+def _store_fixtures_and_commit(db: Session, fixtures: list[dict]) -> None:
+    store_fixtures(db, fixtures)
+    db.commit()
+
+
+def _get_simulated_fixture(db: Session, match_id: str) -> dict[str, Any] | None:
+    item = get_simulated_match(db, match_id)
+    return simulated_fixture(item) if item is not None else None
+
+
+def _get_saved_fixture(db: Session, match_id: str) -> dict[str, Any] | None:
+    saved = db.get(ProviderFixture, match_id)
+    return saved.payload if saved is not None else None
+
+
 def fixture_window() -> dict[str, str]:
     today = datetime.now(timezone.utc).date()
     return {
@@ -91,9 +127,11 @@ async def _fetch_matches() -> list[dict[str, Any]]:
     async with _cache_lock:
         now = time.monotonic()
         if _cached_matches is not None and now < _cache_expires_at:
+            logger.debug("Football fixture cache hit")
             return _cached_matches
 
         params = fixture_window()
+        started = time.perf_counter()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
@@ -105,15 +143,24 @@ async def _fetch_matches() -> list[dict[str, Any]]:
                 response.raise_for_status()
                 payload = response.json()
         except httpx.HTTPStatusError as exc:
+            log_event(logger, logging.ERROR, "provider.fixtures.failed",
+                      status_code=exc.response.status_code,
+                      duration_ms=round((time.perf_counter() - started) * 1000, 2))
             raise HTTPException(
                 status_code=502,
                 detail=f"Football data provider returned HTTP {exc.response.status_code}.",
             ) from exc
         except httpx.TimeoutException as exc:
+            log_event(logger, logging.ERROR, "provider.fixtures.failed", reason="timeout",
+                      duration_ms=round((time.perf_counter() - started) * 1000, 2))
             raise HTTPException(status_code=502, detail="Football data provider timed out.") from exc
         except httpx.RequestError as exc:
+            log_event(logger, logging.ERROR, "provider.fixtures.failed", reason="network_error",
+                      duration_ms=round((time.perf_counter() - started) * 1000, 2))
             raise HTTPException(status_code=502, detail="Could not reach football data provider.") from exc
         except ValueError as exc:
+            log_event(logger, logging.ERROR, "provider.fixtures.failed", reason="invalid_json",
+                      duration_ms=round((time.perf_counter() - started) * 1000, 2))
             raise HTTPException(status_code=502, detail="Football data provider returned invalid JSON.") from exc
 
         if not isinstance(payload, dict):
@@ -127,25 +174,22 @@ async def _fetch_matches() -> list[dict[str, Any]]:
         _cached_matches = [_normalize_match(match) for match in matches]
         _cache_fetched_at = time.time()
         _cache_expires_at = time.monotonic() + CACHE_TTL_SECONDS
+        log_event(logger, logging.INFO, "provider.fixtures.fetched", status_code=response.status_code,
+                  fixture_count=len(_cached_matches), duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                  cache_ttl_seconds=CACHE_TTL_SECONDS)
 
         return _cached_matches
 
 
 @router.get("/matches")
 async def list_matches(db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
-    simulated = [simulated_fixture(item) for item in db.scalars(select(SimulatedMatch))]
-    saved_ended = [fixture.payload for fixture in db.scalars(
-        select(ProviderFixture).where(ProviderFixture.payload["status"].as_string() == "Ended")
-    )]
+    from_database = os.getenv("MATCH_CENTER_FROM_DATABASE") == "1"
+    simulated, saved_ended, database_matches = await run_in_threadpool(
+        _load_database_match_data, db, from_database
+    )
     live_data_unavailable = False
-    if os.getenv("MATCH_CENTER_FROM_DATABASE") == "1":
-        window = fixture_window()
-        kickoff = ProviderFixture.payload["utc_date"].as_string()
-        matches = [fixture.payload for fixture in db.scalars(
-            select(ProviderFixture)
-            .where(kickoff >= window["dateFrom"], kickoff < window["dateTo"])
-            .order_by(kickoff, ProviderFixture.id)
-        )]
+    if from_database:
+        matches = database_matches or []
     else:
         try:
             matches = await asyncio.wait_for(_fetch_matches(), timeout=4) if simulated else await _fetch_matches()
@@ -154,8 +198,7 @@ async def list_matches(db: Annotated[Session, Depends(get_db)]) -> dict[str, Any
                 raise
             matches = []
             live_data_unavailable = True
-        store_fixtures(db, matches)
-        db.commit()
+        await run_in_threadpool(_store_fixtures_and_commit, db, matches)
     provider_matches = {item["id"]: item for item in matches}
     for fixture in saved_ended:
         provider_matches.setdefault(fixture["id"], fixture)
@@ -174,24 +217,23 @@ async def list_matches(db: Annotated[Session, Depends(get_db)]) -> dict[str, Any
 @router.get("/matches/{match_id}")
 async def get_match(match_id: str, db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
     if match_id.startswith("sim-"):
-        simulated = get_simulated_match(db, match_id)
+        simulated = await run_in_threadpool(_get_simulated_fixture, db, match_id)
         if simulated is None:
             raise HTTPException(status_code=404, detail="Match was not found in the current fixtures.")
-        return simulated_fixture(simulated)
-    saved = db.get(ProviderFixture, match_id)
-    if saved and saved.payload["status"] == "Ended":
-        return saved.payload
+        return simulated
+    saved = await run_in_threadpool(_get_saved_fixture, db, match_id)
+    if saved and saved["status"] == "Ended":
+        return saved
     try:
         matches = await _fetch_matches()
     except HTTPException:
         if saved:
-            return saved.payload
+            return saved
         raise
     match = next((item for item in matches if item["id"] == match_id), None)
     if match is None:
         if saved:
-            return saved.payload
+            return saved
         raise HTTPException(status_code=404, detail="Match was not found.")
-    store_fixtures(db, [match])
-    db.commit()
+    await run_in_threadpool(_store_fixtures_and_commit, db, [match])
     return match

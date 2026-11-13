@@ -10,9 +10,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.database import get_db
 from app.models import PointsEvent, ProviderFixture, Prediction, SimulatedMatch, User
+from app.observability import log_event
 from app.routers.auth import get_current_user
 from app.routers.matches import _fetch_matches, store_fixtures
 from app.simulated_matches import get_simulated_match, simulated_fixture, simulated_match_id
@@ -74,7 +76,7 @@ async def create_prediction(
     if payload.match_id.startswith("sim-"):
         if user.is_admin:
             raise HTTPException(status_code=403, detail="Admins cannot predict simulated matches.")
-        simulated = get_simulated_match(db, payload.match_id, lock=True)
+        simulated = await run_in_threadpool(get_simulated_match, db, payload.match_id, lock=True)
         match = simulated_fixture(simulated) if simulated else None
     else:
         matches = await _fetch_matches()
@@ -83,6 +85,11 @@ async def create_prediction(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match was not found in the current fixtures.")
     if match["status"] != "Before":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Predictions are only open before a match starts.")
+
+    return await run_in_threadpool(_persist_prediction, db, user, payload, match)
+
+
+def _persist_prediction(db: Session, user: User, payload: PredictionRequest, match: dict) -> dict:
 
     existing = db.scalar(
         select(Prediction).where(
@@ -127,6 +134,8 @@ async def create_prediction(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="You have already predicted this match.") from exc
     db.refresh(prediction)
     db.refresh(user)
+    log_event(logger, logging.INFO, "prediction.created", prediction_id=prediction.id,
+              user_id=user.id, match_id=prediction.match_id, stake=prediction.stake)
     return {
         "id": prediction.id,
         "match_id": prediction.match_id,
@@ -208,11 +217,13 @@ async def get_my_matches(
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
-    predictions = db.scalars(
-        select(Prediction)
-        .where(Prediction.user_id == user.id)
-        .order_by(Prediction.id.desc())
-    ).all()
+    predictions = await run_in_threadpool(
+        lambda: db.scalars(
+            select(Prediction)
+            .where(Prediction.user_id == user.id)
+            .order_by(Prediction.id.desc())
+        ).all()
+    )
 
     if not predictions:
         return {"predictions": [], "user_points": user.points}
@@ -229,11 +240,17 @@ async def get_my_matches(
     matches_by_id = {str(m["id"]): m for m in matches}
     provider_ids = {pred.match_id for pred in predictions if not pred.match_id.startswith("sim-")}
     if provider_ids:
-        for fixture in db.scalars(select(ProviderFixture).where(ProviderFixture.id.in_(provider_ids))):
+        fixtures = await run_in_threadpool(
+            lambda: db.scalars(select(ProviderFixture).where(ProviderFixture.id.in_(provider_ids))).all()
+        )
+        for fixture in fixtures:
             matches_by_id.setdefault(fixture.id, fixture.payload)
     simulated_ids = {match_id for pred in predictions if (match_id := simulated_match_id(pred.match_id)) is not None}
     if simulated_ids:
-        for item in db.scalars(select(SimulatedMatch).where(SimulatedMatch.id.in_(simulated_ids))):
+        simulated_rows = await run_in_threadpool(
+            lambda: db.scalars(select(SimulatedMatch).where(SimulatedMatch.id.in_(simulated_ids))).all()
+        )
+        for item in simulated_rows:
             fixture = simulated_fixture(item)
             matches_by_id[fixture["id"]] = fixture
 
@@ -280,7 +297,8 @@ async def get_my_matches(
         # Auto-resolve concluded matches with official winner
         if status_val == "Ended" and actual_winner and not pred.is_resolved and not pred.match_id.startswith("sim-"):
             settlement_attempted = True
-            points_changed = _settle_prediction(db, pred, actual_winner) or points_changed
+            settled = await run_in_threadpool(_settle_prediction, db, pred, actual_winner)
+            points_changed = settled or points_changed
 
         is_resolved = pred.is_resolved or (status_val == "Ended" and actual_winner is not None)
         won = pred.won if pred.is_resolved else (
@@ -328,9 +346,9 @@ async def get_my_matches(
         })
 
     if points_changed:
-        db.commit()
+        await run_in_threadpool(db.commit)
     if settlement_attempted:
-        db.refresh(user)
+        await run_in_threadpool(db.refresh, user)
 
     return {
         "predictions": results,
@@ -371,16 +389,25 @@ async def resolve_match(
     if match["winner"] != payload.actual_winner:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The submitted winner does not match the official result.")
 
+    resolved_count = await run_in_threadpool(
+        _settle_provider_predictions, db, payload.match_id, payload.actual_winner
+    )
+    if resolved_count:
+        log_event(logger, logging.INFO, "prediction.provider_settlement.completed",
+                  match_id=payload.match_id, resolved_count=resolved_count)
+    return {"match_id": payload.match_id, "resolved_predictions": resolved_count}
+
+
+def _settle_provider_predictions(db: Session, match_id: str, winner: str) -> int:
     predictions = db.scalars(
         select(Prediction).where(
-            Prediction.match_id == payload.match_id,
+            Prediction.match_id == match_id,
             Prediction.is_resolved.is_(False),
         )
     ).all()
     resolved_count = sum(
-        _settle_prediction(db, prediction, payload.actual_winner)
+        _settle_prediction(db, prediction, winner)
         for prediction in predictions
     )
-
     db.commit()
-    return {"match_id": payload.match_id, "resolved_predictions": resolved_count}
+    return resolved_count

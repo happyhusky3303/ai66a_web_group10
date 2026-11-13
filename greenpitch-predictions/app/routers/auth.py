@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import logging
 import re
 import secrets
 from datetime import date, datetime, timedelta, timezone
@@ -7,12 +8,16 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import PointsEvent, User
+from app.observability import log_event
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -164,6 +169,7 @@ def register(request: Request, credentials: SignupInput,
 
     request.session.clear()
     request.session["user_id"] = user.id
+    log_event(logger, logging.INFO, "auth.registration.succeeded", user_id=user.id)
     return user
 
 
@@ -179,6 +185,7 @@ def login(request: Request, credentials: LoginInput,
         if user is None:
             # Keep the response and approximate password-check work uniform for unknown users.
             verify_password(credentials.password, "pbkdf2_sha256$310000$" + "00" * 16 + "$" + "00" * 32)
+            log_event(logger, logging.WARNING, "auth.login.failed", reason="invalid_credentials")
             raise HTTPException(status_code=401, detail={"code": "AUTH_FAILED", "message": "Tên đăng nhập hoặc mật khẩu không chính xác."})
 
         now = datetime.now(timezone.utc)
@@ -186,18 +193,42 @@ def login(request: Request, credentials: LoginInput,
         if locked_until is not None and locked_until.tzinfo is None:
             locked_until = locked_until.replace(tzinfo=timezone.utc)
         if locked_until is not None and locked_until > now:
+            log_event(logger, logging.WARNING, "auth.login.blocked", user_id=user.id, reason="locked")
             raise HTTPException(status_code=403, detail={"code": "ACCOUNT_LOCKED", "message": "Tài khoản tạm khóa do đăng nhập sai nhiều lần. Vui lòng thử lại sau 15 phút."})
         if not user.is_active:
+            log_event(logger, logging.WARNING, "auth.login.blocked", user_id=user.id, reason="disabled")
             raise HTTPException(status_code=403, detail={"code": "ACCOUNT_DISABLED", "message": "Tài khoản đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên."})
 
         if not verify_password(credentials.password, user.password_hash):
-            user.failed_login_attempts += 1
-            if user.failed_login_attempts >= MAX_FAILED_LOGINS:
-                user.locked_until = now + LOCK_DURATION
-                user.failed_login_attempts = 0
-                db.commit()
-                raise HTTPException(status_code=403, detail={"code": "ACCOUNT_LOCKED", "message": "Tài khoản tạm khóa do đăng nhập sai nhiều lần. Vui lòng thử lại sau 15 phút."})
+            next_attempt_count = User.failed_login_attempts + 1
+            would_lock = next_attempt_count >= MAX_FAILED_LOGINS
+            update_result = db.execute(
+                update(User)
+                .where(
+                    User.id == user.id,
+                    User.is_active.is_(True),
+                    (User.locked_until.is_(None) | (User.locked_until <= now)),
+                )
+                .values(
+                    failed_login_attempts=case((would_lock, 0), else_=next_attempt_count),
+                    locked_until=case((would_lock, now + LOCK_DURATION), else_=None),
+                )
+                .execution_options(synchronize_session=False)
+            )
             db.commit()
+            db.refresh(user)
+            refreshed_lock = user.locked_until
+            if refreshed_lock is not None and refreshed_lock.tzinfo is None:
+                refreshed_lock = refreshed_lock.replace(tzinfo=timezone.utc)
+            if not user.is_active:
+                log_event(logger, logging.WARNING, "auth.login.blocked", user_id=user.id, reason="disabled")
+                raise HTTPException(status_code=403, detail={"code": "ACCOUNT_DISABLED", "message": "Tài khoản đã bị vô hiệu hóa. Vui lòng liên hệ quản trị viên."})
+            if update_result.rowcount == 0 or (refreshed_lock is not None and refreshed_lock > now):
+                log_event(logger, logging.WARNING, "auth.account.locked", user_id=user.id,
+                          duration_seconds=int(LOCK_DURATION.total_seconds()))
+                raise HTTPException(status_code=403, detail={"code": "ACCOUNT_LOCKED", "message": "Tài khoản tạm khóa do đăng nhập sai nhiều lần. Vui lòng thử lại sau 15 phút."})
+            log_event(logger, logging.WARNING, "auth.login.failed", user_id=user.id,
+                      failed_attempts=user.failed_login_attempts)
             raise HTTPException(status_code=401, detail={"code": "AUTH_FAILED", "message": "Tên đăng nhập hoặc mật khẩu không chính xác."})
 
         user.failed_login_attempts = 0
@@ -211,6 +242,7 @@ def login(request: Request, credentials: LoginInput,
 
     request.session.clear()
     request.session["user_id"] = user.id
+    log_event(logger, logging.INFO, "auth.login.succeeded", user_id=user.id)
     return user
 
 
@@ -250,4 +282,7 @@ def claim_daily_gift(
 ) -> dict:
     today = utc_today()
     awarded = award_daily_reward(db, user, today)
+    if awarded:
+        log_event(logger, logging.INFO, "account.daily_reward.claimed", user_id=user.id,
+                  points=DAILY_REWARD_POINTS, day=today.isoformat())
     return {**session_payload(user, today), "awarded": awarded}

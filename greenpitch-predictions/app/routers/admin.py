@@ -1,4 +1,5 @@
 import json
+import logging
 import secrets
 from datetime import datetime, timezone
 from typing import Annotated, Literal
@@ -12,9 +13,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import PointsEvent, AdminUserChange, Prediction, SimulatedMatch, User
+from app.observability import log_event
 from app.routers.auth import get_current_user
 from app.routers.predictions import _settle_prediction
 from app.simulated_matches import get_simulated_match, kickoff_utc, simulated_fixture
+
+
+logger = logging.getLogger(__name__)
 
 
 def require_admin(user: Annotated[User, Depends(get_current_user)]) -> User:
@@ -99,6 +104,8 @@ def publish_match(payload: MatchInput, db: Db, actor: Actor) -> dict:
     match = SimulatedMatch(**payload.model_dump(exclude={"kickoff"}), kickoff=kickoff, created_by=actor.id)
     db.add(match)
     db.commit()
+    log_event(logger, logging.INFO, "admin.simulated_match.published", actor_id=actor.id,
+              match_id=f"sim-{match.id}")
     db.refresh(match)
     return simulated_fixture(match)
 
@@ -164,6 +171,8 @@ def settle_match(db: Session, match: SimulatedMatch, actor: User, home: int, awa
     match.settled_count = sum(_settle_prediction(db, prediction, fixture["winner"]) for prediction in predictions)
     settled_count = match.settled_count
     db.commit()
+    log_event(logger, logging.INFO, "admin.simulated_match.settled", actor_id=actor.id,
+              match_id=fixture["id"], settled_count=settled_count)
     return {**fixture, "settled_count": settled_count}
 
 
@@ -249,6 +258,8 @@ def change_user(db: Session, actor: User, user_id: int, action: str, payload: Ch
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(409, "This change could not be saved. Refresh and try again.") from exc
+    log_event(logger, logging.INFO, "admin.account.changed", actor_id=actor.id,
+              user_id=user.id, action=action, request_id=request_id)
     return summary
 
 

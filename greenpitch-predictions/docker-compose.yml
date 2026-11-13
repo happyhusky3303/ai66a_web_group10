@@ -16,5 +16,20 @@ services:
       - predictions_data:/data
     restart: unless-stopped
 
+  fixture-worker:
+    build: .
+    command: ["python", "-m", "app.fixture_scheduler"]
+    profiles: ["fixture-sync"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/predictions.db}
+      FOOTBALL_DATA_API_KEY: ${FOOTBALL_DATA_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - predictions_data:/data
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   predictions_data:

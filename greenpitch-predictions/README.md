@@ -55,6 +55,10 @@ starting the app. URL-encode reserved characters in the password (for example,
 shown above. Docker Compose reads `.env` automatically. Keep the real connection
 string out of source control.
 
+Application logs are emitted as JSON to stdout. Each HTTP response includes an
+`X-Request-ID`; include it when investigating a failed request. `/health/live`
+checks that the process responds, while `/health/ready` checks database access.
+
 `SESSION_SECRET_KEY` should be a unique, long random value in deployments. If
 omitted for local development, the app generates a temporary key at startup, so
 sessions will be invalidated when the process restarts. `ADMIN_TOKEN` is
@@ -97,6 +101,19 @@ In the `PORTS` column, confirm that `8000` is mapped to host port `8000`
 (shown as `0.0.0.0:8000->8000/tcp`).
 
 For production behind HTTPS, set `SESSION_HTTPS_ONLY=true` in `.env`.
+
+Fixture reconciliation runs as a separate process so scaling web containers does
+not start duplicate schedulers. With Docker Compose, set `FOOTBALL_DATA_API_KEY`
+and start the optional worker profile:
+
+```powershell
+docker compose --profile fixture-sync up --build -d
+```
+
+On Render or another platform, run one background worker using
+`python -m app.fixture_scheduler` with the same `DATABASE_URL`,
+`FOOTBALL_DATA_API_KEY`, and `LOG_LEVEL` as the web service. Do not run multiple
+copies of this scheduler against the same database.
 
 ## Admin setup
 

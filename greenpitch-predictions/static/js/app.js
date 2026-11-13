@@ -863,7 +863,7 @@ async function loadPointsHistory() {
     const labels = { opening: "Starting balance", stake: "Prediction stake", payout: "Winning payout",
       gift: "Daily gift", adjustment: "Admin adjustment", loss: "Prediction loss" };
     const events = data.events;
-    const start = Date.parse(events[0].kind === "opening" ? events[0].at : data.since);
+    const start = Date.parse(events.length > 0 && events[0].kind === "opening" ? events[0].at : data.since);
     const end = Date.now();
     const span = Math.max(1, end - start);
     const balances = [data.opening, ...events.map((event) => event.balance)];

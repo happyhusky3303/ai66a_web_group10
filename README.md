@@ -1,13 +1,13 @@
 # Football Score Predictor
 
 A lightweight web application for predicting football match outcomes using
-real-time sports data and in-app points. It does not use real money.
+football fixtures and in-app points. It does not use real money.
 
 ## Core Features
 
 - **Points-based predictions**: Users stake available points on upcoming match outcomes; wins pay 2× the stake and losses forfeit it.
-- **Daily reward**: Users automatically receive 500 in-app points on their first authenticated visit each UTC calendar day.
-- **Live match data**: Automatically fetches fixtures, team statistics, and live match results via Football API.
+- **Daily reward**: Users can claim 500 in-app points once per UTC calendar day.
+- **Match data**: Displays fixtures and results from football-data.org, with provider data cached by the backend.
 - **Leaderboard & scoring system**: Tracks available point balances and prediction accuracy to rank participants.
 - **Lightweight UI**: Fast-loading, framework-free interface.
 

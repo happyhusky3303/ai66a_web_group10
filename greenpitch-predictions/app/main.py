@@ -1,10 +1,10 @@
-import asyncio
-import sys
 from hashlib import sha256
 import logging
+import json
 import os
 import secrets
-from datetime import datetime, timedelta, timezone
+import time
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, AsyncIterator
@@ -18,14 +18,17 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import Base, engine, get_db
 from app.models import User
+from app.observability import configure_logging, log_event, request_id_context, request_id_from
 from app.routers import admin, auth, matches, predictions
 
 
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+configure_logging()
 logger = logging.getLogger(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(PROJECT_DIR / "templates"))
@@ -40,41 +43,7 @@ if not session_secret:
     logger.warning("SESSION_SECRET_KEY is unset; sessions will expire when the app restarts.")
 
 
-from sqlalchemy import inspect, select, text, update
-
-async def run_fixture_job(mode: str) -> None:
-    while True:
-        status = None
-        try:
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "app.reconcile_fixtures", mode, "--apply",
-            )
-            try:
-                status = await process.wait()
-            except asyncio.CancelledError:
-                if process.returncode is None:
-                    try:
-                        process.terminate()
-                    except ProcessLookupError:
-                        pass
-                    await process.wait()
-                raise
-            if status:
-                logger.warning("Fixture job %s exited with status %d", mode, status)
-        except OSError:
-            logger.exception("Could not start fixture job %s", mode)
-
-        delay = 900
-        if mode == "--window":
-            now = datetime.now(timezone.utc)
-            next_run = now.replace(hour=0, minute=5, second=0, microsecond=0)
-            if next_run <= now:
-                next_run += timedelta(days=1)
-            delay = (next_run - now).total_seconds()
-            if status != 0:
-                delay = min(delay, 900)
-        await asyncio.sleep(delay)
-
+from sqlalchemy import inspect, select, update
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -115,18 +84,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             if col not in simulated_columns:
                 conn.execute(text(f"ALTER TABLE simulated_matches ADD COLUMN {col} {col_type}"))
     bootstrap_admin()
-    jobs = []
-    if os.getenv("FOOTBALL_DATA_API_KEY") and os.getenv("FIXTURE_JOBS_ENABLED", "1") == "1":
-        jobs = [
-            asyncio.create_task(run_fixture_job(mode))
-            for mode in ("--window", "--overdue")
-        ]
-    try:
-        yield
-    finally:
-        for job in jobs:
-            job.cancel()
-        await asyncio.gather(*jobs, return_exceptions=True)
+    log_event(logger, logging.INFO, "application.started", database_dialect=engine.dialect.name)
+    yield
+    log_event(logger, logging.INFO, "application.stopped")
 
 
 def bootstrap_admin() -> None:
@@ -148,11 +108,87 @@ def bootstrap_admin() -> None:
 app = FastAPI(title="GreenPitch Predictions", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next) -> Response:
+    request_id = request_id_from(request.headers.get("X-Request-ID"))
+    request.state.request_id = request_id
+    token = request_id_context.set(request_id)
+    started = time.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        route = request.scope.get("route")
+        log_event(
+            logger,
+            logging.WARNING if status_code >= 500 else logging.INFO,
+            "http.request.completed",
+            method=request.method,
+            route=getattr(route, "path", request.url.path),
+            status_code=status_code,
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
+        request_id_context.reset(token)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> Response:
+    request_id = getattr(request.state, "request_id", "-")
+    token = request_id_context.set(request_id)
+    try:
+        logger.exception(
+            "Unhandled request exception",
+            extra={"event_fields": {
+                "event": "http.request.unhandled_exception",
+                "method": request.method,
+                "route": getattr(request.scope.get("route"), "path", request.url.path),
+                "exception_type": type(exc).__name__,
+            }},
+        )
+    finally:
+        request_id_context.reset(token)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An unexpected server error occurred.", "request_id": request_id},
+        headers={"X-Request-ID": request_id},
+    )
+
+
+@app.get("/health/live", include_in_schema=False)
+def liveness() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/health/ready", include_in_schema=False)
+def readiness() -> Response:
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except SQLAlchemyError:
+        logger.exception("Database readiness check failed")
+        return JSONResponse(status_code=503, content={"status": "not_ready"})
+    return JSONResponse(content={"status": "ready"})
+
+
 async def app_http_exception_handler(
     request: Request,
     exc: StarletteHTTPException,
 ) -> Response:
     response = await fastapi_http_exception_handler(request, exc)
+    route_path = getattr(request.scope.get("route"), "path", request.url.path)
+    detail_code = exc.detail.get("code") if isinstance(exc.detail, dict) else None
+    log_event(
+        logger,
+        logging.WARNING if exc.status_code >= 500 else logging.INFO,
+        "http.request.rejected",
+        method=request.method,
+        route=route_path,
+        status_code=exc.status_code,
+        error_code=detail_code,
+    )
     if request.url.path.startswith("/auth/"):
         detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
         code = detail.get("code") or ({400: "INVALID_INPUT", 401: "AUTH_FAILED", 403: "FORBIDDEN", 409: "CONFLICT"}.get(exc.status_code, "SERVER_ERROR"))
@@ -162,7 +198,16 @@ async def app_http_exception_handler(
             "message": detail.get("message", "Yêu cầu không thể xử lý."),
             "errors": detail.get("errors", []),
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "request_id": getattr(request.state, "request_id", "-"),
         }, headers=dict(response.headers))
+    else:
+        try:
+            body = json.loads(response.body)
+            if isinstance(body, dict):
+                body["request_id"] = getattr(request.state, "request_id", "-")
+                response = JSONResponse(status_code=exc.status_code, content=body, headers=dict(response.headers))
+        except (TypeError, ValueError):
+            pass
     return response
 
 
@@ -173,17 +218,35 @@ app.add_exception_handler(StarletteHTTPException, app_http_exception_handler)
 async def auth_validation_error_handler(request: Request, exc: RequestValidationError) -> Response:
     if not request.url.path.startswith("/auth/"):
         from fastapi.exception_handlers import request_validation_exception_handler
-        return await request_validation_exception_handler(request, exc)
+        issues = exc.errors()
+        log_event(logger, logging.INFO, "http.request.validation_failed",
+                  method=request.method,
+                  route=getattr(request.scope.get("route"), "path", request.url.path),
+                  error_count=len(issues),
+                  fields=sorted({str(issue.get("loc", ["input"])[-1]) for issue in issues}))
+        response = await request_validation_exception_handler(request, exc)
+        try:
+            body = json.loads(response.body)
+            if isinstance(body, dict):
+                body["request_id"] = getattr(request.state, "request_id", "-")
+                return JSONResponse(status_code=response.status_code, content=body, headers=dict(response.headers))
+        except (TypeError, ValueError):
+            pass
+        return response
     errors = []
     for issue in exc.errors():
         field = str(issue.get("loc", ["body", "input"])[-1])
         errors.append({"field": field, "message": issue.get("msg", "Dữ liệu không hợp lệ.")})
+    log_event(logger, logging.INFO, "http.request.validation_failed",
+              method=request.method, route=getattr(request.scope.get("route"), "path", request.url.path),
+              error_count=len(errors), fields=sorted({item["field"] for item in errors}))
     return JSONResponse(status_code=400, content={
         "success": False,
         "code": "VALIDATION_ERROR" if request.url.path.endswith("register") else "INVALID_INPUT",
         "message": "Vui lòng kiểm tra lại thông tin đã nhập.",
         "errors": errors,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "request_id": getattr(request.state, "request_id", "-"),
     })
 app.add_middleware(
     SessionMiddleware,
