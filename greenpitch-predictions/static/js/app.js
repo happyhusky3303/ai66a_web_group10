@@ -271,7 +271,7 @@ function applyMatchFilter() {
       countEl: document.querySelector("#ended-count"),
       emptyEl: document.querySelector("#ended-empty"),
       suffix: "ended",
-      defaultEmptyText: "No ended matches for this period.",
+      defaultEmptyText: "No ended matches.",
     },
   ];
 
