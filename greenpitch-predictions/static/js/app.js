@@ -1059,7 +1059,7 @@ function renderHomeAnalytics(data) {
     result.className = item.won === true ? "text-green" : item.won === false ? "text-red" : "muted";
     const netPoints = item.net_points ?? item.points_awarded;
     result.textContent = netPoints === null ? "Pending" : `${netPoints > 0 ? "+" : ""}${netPoints} pts`;
-    row.append(matchup, detail, result);
+    row.append(detail, matchup, result);
     recent.append(row);
   }
 }

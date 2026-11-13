@@ -175,13 +175,13 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 .confusion-matrix td { font: 13px var(--font-mono); }
 .confusion-matrix .matrix-correct { color: var(--green); background: var(--green-soft); }
 .recent-predictions { display: grid; }
-.recent-prediction { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.recent-prediction { display: grid; grid-template-columns: minmax(5.5rem, 1fr) minmax(0, 4fr) minmax(4rem, 1fr); align-items: center; gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); }
 .recent-prediction:first-child { border-top: 0; }
-.recent-matchup { grid-column: 1; width: 100%; overflow: hidden; font-size: 11px; font-weight: 650; }
+.recent-matchup { grid-column: 2; grid-row: 1; width: 100%; overflow: hidden; font-size: 11px; font-weight: 650; }
 .recent-matchup .team-logo { width: 22px; height: 22px; flex-basis: 22px; }
 .recent-matchup .team-name { font-size: 10px; }
-.recent-detail { color: var(--muted); font-size: 10px; }
-.recent-prediction > strong { grid-column: 2; grid-row: 1 / span 2; align-self: center; font: 11px var(--font-mono); }
+.recent-detail { grid-column: 1; grid-row: 1; color: var(--muted); font-size: 10px; }
+.recent-prediction > strong { grid-column: 3; grid-row: 1; justify-self: end; text-align: right; font: 11px var(--font-mono); }
 
 .match-hero { margin-bottom: 16px; }
 .match-hero-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
