@@ -413,7 +413,6 @@ function createTeamPair(homeName, homeCrest, awayName, awayCrest, centerText = "
 function renderFixtureWeeks(container, matches, newestFirst = false) {
   if (!container) return;
   const weeks = new Map();
-  const format = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
   for (const match of matches) {
     const kickoff = new Date(match.utc_date || NaN);
     const monday = new Date(kickoff);
@@ -430,7 +429,15 @@ function renderFixtureWeeks(container, matches, newestFirst = false) {
     const section = document.createElement("section");
     section.className = "fixture-week";
     const heading = document.createElement("h4");
-    heading.textContent = Number.isFinite(key) ? "Week of " + format.format(key) : "Kickoff date unavailable";
+    heading.textContent = "Kickoff date unavailable";
+    if (Number.isFinite(key)) {
+      const monday = new Date(key);
+      // The Thursday of an ISO week determines its week-year.
+      const thursday = new Date(Date.UTC(monday.getFullYear(), monday.getMonth(), monday.getDate() + 3));
+      const yearStart = Date.UTC(thursday.getUTCFullYear(), 0, 1);
+      const weekNumber = Math.floor((thursday - yearStart) / (7 * 86400000)) + 1;
+      heading.textContent = `Week ${weekNumber}`;
+    }
     section.append(heading);
     for (const match of weeks.get(key)) section.append(createMatchRow(match));
     container.append(section);
