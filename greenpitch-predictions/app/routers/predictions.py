@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -16,7 +16,6 @@ from app.models import PointsEvent, ProviderFixture, Prediction, SimulatedMatch,
 from app.routers.auth import get_current_user
 from app.routers.matches import _fetch_matches, store_fixtures
 from app.simulated_matches import get_simulated_match, simulated_fixture, simulated_match_id
-from app.utils.rate_limit import limiter
 
 
 router = APIRouter(tags=["predictions"])
@@ -41,10 +40,7 @@ class ResolveRequest(BaseModel):
 
 
 @router.get("/api/my-predictions")
-@limiter.limit("30/minute")
 def get_my_prediction_choices(
-    request: Request,
-    response: Response,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
     match_id: str | None = None,
@@ -67,10 +63,7 @@ def get_my_prediction_choices(
 
 
 @router.post("/api/predict", status_code=status.HTTP_201_CREATED)
-@limiter.limit("10/minute")
 async def create_prediction(
-    request: Request,
-    response: Response,
     payload: PredictionRequest,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
@@ -180,10 +173,7 @@ def _settle_prediction(db: Session, prediction: Prediction, actual_winner: str) 
 
 
 @router.get("/api/points-history")
-@limiter.limit("30/minute")
 def get_points_history(
-    request: Request,
-    response: Response,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
@@ -214,10 +204,7 @@ def get_points_history(
 
 
 @router.get("/api/my-matches")
-@limiter.limit("30/minute")
 async def get_my_matches(
-    request: Request,
-    response: Response,
     db: Annotated[Session, Depends(get_db)],
     user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
@@ -353,10 +340,7 @@ async def get_my_matches(
 
 
 @router.get("/api/leaderboard")
-@limiter.limit("20/minute")
 def leaderboard(
-    request: Request,
-    response: Response,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     users = db.scalars(select(User).order_by(User.points.desc(), User.username.asc()).limit(50)).all()

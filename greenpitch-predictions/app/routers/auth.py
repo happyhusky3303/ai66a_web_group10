@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import PointsEvent, User
-from app.utils.rate_limit import limiter
 
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -133,8 +132,7 @@ def get_current_user(request: Request, db: Annotated[Session, Depends(get_db)]) 
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-@limiter.limit("5/minute")
-def register(request: Request, response: Response, credentials: SignupInput,
+def register(request: Request, credentials: SignupInput,
              db: Annotated[Session, Depends(get_db)]) -> User:
     try:
         existing = db.scalar(select(User.id).where(or_(
@@ -170,8 +168,7 @@ def register(request: Request, response: Response, credentials: SignupInput,
 
 
 @router.post("/login", response_model=UserResponse)
-@limiter.limit("5/minute")
-def login(request: Request, response: Response, credentials: LoginInput,
+def login(request: Request, credentials: LoginInput,
           db: Annotated[Session, Depends(get_db)]) -> User:
     identifier = credentials.username.lower()
     try:

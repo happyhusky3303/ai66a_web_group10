@@ -1,55 +1,5 @@
 const formatPoints = (points) => new Intl.NumberFormat().format(points);
-const PREDICTION_LIMIT = 10;
 let predictedMatchIds = new Set();
-let predictionQuotaRemaining = PREDICTION_LIMIT;
-let predictionQuotaResetAt = null;
-let predictionQuotaTimer = null;
-
-function renderPredictionQuota() {
-  const quota = document.querySelector("#prediction-quota");
-  if (!quota) return;
-
-  const resetSeconds = predictionQuotaResetAt === null
-    ? null
-    : Math.max(0, Math.ceil((predictionQuotaResetAt - Date.now()) / 1000));
-  const resetText = resetSeconds === null
-    ? "resets every minute"
-    : `resets in ${Math.floor(resetSeconds / 60)}m ${String(resetSeconds % 60).padStart(2, "0")}s`;
-
-  quota.textContent = `Predictions left: ${predictionQuotaResetAt === null ? "up to " : ""}${predictionQuotaRemaining} · ${resetText} · shared network`;
-  document.querySelectorAll(".choice-button").forEach((button) => {
-    button.disabled = predictionQuotaRemaining === 0 || button.dataset.predictionSubmitted === "true";
-  });
-  updatePredictionControls();
-
-  if (resetSeconds === 0) {
-    predictionQuotaRemaining = PREDICTION_LIMIT;
-    predictionQuotaResetAt = null;
-    quota.textContent = `Predictions left: up to ${PREDICTION_LIMIT} · resets every minute · shared network`;
-    document.querySelectorAll(".choice-button").forEach((button) => {
-      button.disabled = button.dataset.predictionSubmitted === "true";
-    });
-    updatePredictionControls();
-    if (predictionQuotaTimer !== null) {
-      window.clearInterval(predictionQuotaTimer);
-      predictionQuotaTimer = null;
-    }
-  }
-}
-
-function updatePredictionQuota(headers) {
-  const remaining = Number.parseInt(headers.get("X-RateLimit-Remaining"), 10);
-  const resetSeconds = Number.parseInt(headers.get("X-RateLimit-Reset"), 10);
-  if (!Number.isInteger(remaining) || !Number.isInteger(resetSeconds)) return;
-
-  predictionQuotaRemaining = Math.max(0, remaining);
-  predictionQuotaResetAt = Date.now() + Math.max(0, resetSeconds) * 1000;
-  renderPredictionQuota();
-  if (predictionQuotaTimer === null) {
-    predictionQuotaTimer = window.setInterval(renderPredictionQuota, 1000);
-  }
-}
-
 function updatePredictionControls() {
   const stakeInput = document.querySelector("#prediction-stake");
   if (!stakeInput) return;
@@ -67,7 +17,6 @@ function updatePredictionControls() {
   }
   document.querySelectorAll(".prediction-option").forEach((button) => {
     button.disabled = !valid
-      || predictionQuotaRemaining === 0
       || button.dataset.predictionSubmitted === "true";
   });
 }
@@ -85,7 +34,6 @@ async function apiRequest(url, options = {}) {
   } catch {
     throw new Error("Không thể kết nối tới máy chủ. Vui lòng kiểm tra mạng và thử lại.");
   }
-  if (url === "/api/predict") updatePredictionQuota(response.headers);
   if (!response.ok) {
     let message = `Request failed (${response.status}).`;
     let body = {};
@@ -543,7 +491,8 @@ async function submitPrediction(matchId, winner, button) {
     renderNavAccount();
     updatePredictionControls();
     buttons.forEach((choice) => { choice.dataset.predictionSubmitted = "true"; });
-    renderPredictionQuota();
+    buttons.forEach((choice) => { choice.disabled = true; });
+    updatePredictionControls();
     if (document.body.dataset.page === "match-detail") {
       const predictionPanel = document.querySelector("#prediction-panel");
       const locked = document.querySelector("#prediction-locked");
@@ -757,13 +706,11 @@ async function loadCurrentUser({ signal, propagateError = false } = {}) {
     if (currentUser) {
       authLink.classList.add("hidden");
       logoutButton?.classList.remove("hidden");
-      document.querySelector("#prediction-quota")?.classList.remove("hidden");
       if (name) name.textContent = currentUser.username;
       if (points) points.textContent = formatPoints(currentUser.points);
     } else {
       authLink.classList.remove("hidden");
       logoutButton?.classList.add("hidden");
-      document.querySelector("#prediction-quota")?.classList.add("hidden");
       if (name) name.textContent = "Sign in to track your score";
       if (points) points.textContent = "—";
     }
@@ -1320,7 +1267,6 @@ async function initMatchDetail() {
         panel.append(button);
       }
       updatePredictionControls();
-      document.querySelector("#prediction-quota").classList.remove("hidden");
     } else {
       predictionPanel.classList.add("hidden");
       locked.classList.remove("hidden");

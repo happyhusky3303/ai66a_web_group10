@@ -99,7 +99,6 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 .matches-filter-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .checkbox-filter { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; cursor: pointer; white-space: nowrap; }
 .checkbox-filter input { width: 14px; height: 14px; margin: 0; accent-color: var(--green); cursor: pointer; }
-.prediction-quota { color: var(--green); font: 10px var(--font-mono); }
 .select-input { max-width: 180px; min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text); font: 12px var(--font-sans); cursor: pointer; outline: none; transition: border-color .15s; text-overflow: ellipsis; }
 .select-input:hover { border-color: #404044; }
 .select-input:focus { border-color: var(--green); }
@@ -202,7 +201,6 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 .prediction-option:hover:not(:disabled) { background: #49e25e; }
 .prediction-option:disabled { cursor: not-allowed; opacity: .58; }
 .prediction-locked { margin-top: 16px; color: var(--muted); font-size: 12px; }
-.match-hero .prediction-quota { margin-left: auto; }
 .detail-lower-grid:has(> :only-child), .detail-lower-grid:has(> .hidden) { grid-template-columns: minmax(0, 1fr); }
 .detail-lower-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: start; gap: 16px; }
 .match-data-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--border); }

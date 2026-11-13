@@ -106,18 +106,17 @@ def test_match_endpoints_return_fixture_or_not_found(client, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("status_code", "expected_status"),
-    [(429, 429), (500, 502)],
+    "status_code",
+    [429, 500],
 )
-def test_provider_http_errors_are_reported(client, monkeypatch, status_code, expected_status):
+def test_provider_http_errors_are_reported(client, monkeypatch, status_code):
     class MockResponse:
         def __init__(self):
-            self.headers = httpx.Headers({"Retry-After": "30"})
             self.status_code = status_code
 
         def raise_for_status(self):
             request = httpx.Request("GET", "https://provider.test/matches")
-            response = httpx.Response(self.status_code, request=request, headers=self.headers)
+            response = httpx.Response(self.status_code, request=request)
             raise httpx.HTTPStatusError("provider error", request=request, response=response)
 
     class MockClient:
@@ -135,10 +134,8 @@ def test_provider_http_errors_are_reported(client, monkeypatch, status_code, exp
 
     response = client.get("/api/matches")
 
-    assert response.status_code == expected_status
-    assert response.json()["detail"]
-    if status_code == 429:
-        assert "30 seconds" in response.json()["detail"]
+    assert response.status_code == 502
+    assert response.json()["detail"] == f"Football data provider returned HTTP {status_code}."
 
 
 def test_provider_invalid_payload_is_reported(client, monkeypatch):

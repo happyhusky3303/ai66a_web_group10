@@ -1,12 +1,11 @@
 import asyncio
-import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -16,9 +15,6 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from app.simulated_matches import get_simulated_match, simulated_fixture
 
-from app.utils.rate_limit import limiter
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["matches"])
 CACHE_TTL_SECONDS = 300
@@ -27,19 +23,6 @@ _cache_lock = asyncio.Lock()
 _cached_matches: list[dict[str, Any]] | None = None
 _cache_expires_at = 0.0
 _cache_fetched_at: float | None = None
-
-# Automatic throttling tracking based on football-data.org response headers
-_requests_available: int | None = None
-_counter_reset_at: float = 0.0
-
-
-def _parse_header_int(headers: httpx.Headers, *header_names: str) -> int | None:
-    for name in header_names:
-        raw = headers.get(name)
-        if raw is not None and raw.strip().isdigit():
-            return int(raw.strip())
-    return None
-
 
 def _normalize_match(match: dict[str, Any]) -> dict[str, Any]:
     raw_status = match.get("status", "")
@@ -97,7 +80,7 @@ def fixture_window() -> dict[str, str]:
 
 
 async def _fetch_matches() -> list[dict[str, Any]]:
-    global _cached_matches, _cache_expires_at, _cache_fetched_at, _requests_available, _counter_reset_at
+    global _cached_matches, _cache_expires_at, _cache_fetched_at
     api_key = os.getenv("FOOTBALL_DATA_API_KEY")
     if not api_key:
         raise HTTPException(
@@ -110,22 +93,6 @@ async def _fetch_matches() -> list[dict[str, Any]]:
         if _cached_matches is not None and now < _cache_expires_at:
             return _cached_matches
 
-        # Proactive throttling check: If we have zero remaining requests before reset, avoid firing
-        if _requests_available is not None and _requests_available <= 0 and now < _counter_reset_at:
-            seconds_remaining = int(_counter_reset_at - now) + 1
-            if _cached_matches is not None:
-                logger.warning(
-                    "football-data.org rate limit active (0 requests available). Serving cached matches for %ds.",
-                    seconds_remaining,
-                )
-                _cache_expires_at = _counter_reset_at
-                return _cached_matches
-            raise HTTPException(
-                status_code=429,
-                detail=f"Football data provider rate limit active. Resets in {seconds_remaining} seconds.",
-                headers={"Retry-After": str(seconds_remaining)},
-            )
-
         params = fixture_window()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -135,51 +102,9 @@ async def _fetch_matches() -> list[dict[str, Any]]:
                     params=params,
                 )
 
-                # Inspect football-data.org throttling headers
-                available = _parse_header_int(
-                    response.headers,
-                    "x-requests-available-minute",
-                    "X-RequestsAvailable",
-                )
-                counter_reset = _parse_header_int(response.headers, "X-RequestCounter-Reset")
-                client_id = response.headers.get("X-Authenticated-Client")
-                api_version = response.headers.get("X-API-Version")
-
-                logger.info(
-                    "football-data.org response: status=%d, client=%s, v=%s, available=%s, reset_in=%ss",
-                    response.status_code,
-                    client_id,
-                    api_version,
-                    available,
-                    counter_reset,
-                )
-
-                if available is not None:
-                    _requests_available = available
-                if counter_reset is not None:
-                    _counter_reset_at = time.monotonic() + counter_reset
-
                 response.raise_for_status()
                 payload = response.json()
         except httpx.HTTPStatusError as exc:
-            reset_sec = _parse_header_int(exc.response.headers, "X-RequestCounter-Reset", "Retry-After") or 60
-            _counter_reset_at = time.monotonic() + reset_sec
-            _requests_available = 0
-
-            if exc.response.status_code == 429:
-                if _cached_matches is not None:
-                    logger.warning(
-                        "football-data.org rate limit exceeded (HTTP 429). Serving cached matches for %ds.",
-                        reset_sec,
-                    )
-                    _cache_expires_at = time.monotonic() + max(reset_sec, 60)
-                    return _cached_matches
-                raise HTTPException(
-                    status_code=429,
-                    detail=f"Football data rate limit exceeded. Resets in {reset_sec} seconds.",
-                    headers={"Retry-After": str(reset_sec)},
-                ) from exc
-
             raise HTTPException(
                 status_code=502,
                 detail=f"Football data provider returned HTTP {exc.response.status_code}.",
@@ -201,25 +126,13 @@ async def _fetch_matches() -> list[dict[str, Any]]:
 
         _cached_matches = [_normalize_match(match) for match in matches]
         _cache_fetched_at = time.time()
-
-        # Dynamic throttling: if requests remaining are low (<= 1), extend cache TTL until reset
-        if _requests_available is not None and _requests_available <= 1 and _counter_reset_at > time.monotonic():
-            extended_seconds = max(CACHE_TTL_SECONDS, int(_counter_reset_at - time.monotonic()) + 5)
-            _cache_expires_at = time.monotonic() + extended_seconds
-            logger.warning(
-                "football-data.org remaining requests low (%d). Cache TTL dynamically extended to %ds.",
-                _requests_available,
-                extended_seconds,
-            )
-        else:
-            _cache_expires_at = time.monotonic() + CACHE_TTL_SECONDS
+        _cache_expires_at = time.monotonic() + CACHE_TTL_SECONDS
 
         return _cached_matches
 
 
 @router.get("/matches")
-@limiter.limit("20/minute")
-async def list_matches(request: Request, response: Response, db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
+async def list_matches(db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
     simulated = [simulated_fixture(item) for item in db.scalars(select(SimulatedMatch))]
     saved_ended = [fixture.payload for fixture in db.scalars(
         select(ProviderFixture).where(ProviderFixture.payload["status"].as_string() == "Ended")
@@ -259,8 +172,7 @@ async def list_matches(request: Request, response: Response, db: Annotated[Sessi
 
 
 @router.get("/matches/{match_id}")
-@limiter.limit("20/minute")
-async def get_match(match_id: str, request: Request, response: Response, db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
+async def get_match(match_id: str, db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
     if match_id.startswith("sim-"):
         simulated = get_simulated_match(db, match_id)
         if simulated is None:

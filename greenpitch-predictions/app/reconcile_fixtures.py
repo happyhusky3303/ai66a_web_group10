@@ -59,8 +59,6 @@ def main() -> None:
                 response = client.get(endpoint, params=params)
             except httpx.RequestError:
                 raise SystemExit("Could not reach the provider. Retry on the next scheduled run.") from None
-            if response.status_code == 429:
-                raise SystemExit("Provider rate limit reached. Retry after the provider reset.")
             if response.is_error:
                 raise SystemExit(f"Provider returned HTTP {response.status_code}.")
             try:

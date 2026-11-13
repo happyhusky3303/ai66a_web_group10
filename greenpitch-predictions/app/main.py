@@ -15,7 +15,6 @@ from fastapi.exception_handlers import http_exception_handler as fastapi_http_ex
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -24,7 +23,6 @@ from sqlalchemy.orm import Session
 from app.database import Base, engine, get_db
 from app.models import User
 from app.routers import admin, auth, matches, predictions
-from app.utils.rate_limit import limiter
 
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -148,43 +146,16 @@ def bootstrap_admin() -> None:
 
 
 app = FastAPI(title="GreenPitch Predictions", lifespan=lifespan)
-app.state.limiter = limiter
 
 
-def add_rate_limit_headers(request: Request, response: Response) -> Response:
-    current_limit = getattr(request.state, "view_rate_limit", None)
-    if current_limit is not None:
-        return request.app.state.limiter._inject_headers(response, current_limit)
-    return response
-
-
-def rate_limit_exceeded_handler(request: Request, _: RateLimitExceeded) -> Response:
-    detail = (
-        "No predictions available right now. Please wait for the counter to reset."
-        if request.url.path == "/api/predict"
-        else "Too many requests. Please try again later."
-    )
-    if request.url.path.startswith("/auth/"):
-        response = JSONResponse(status_code=429, content={
-            "success": False,
-            "code": "TOO_MANY_REQUESTS",
-            "message": "Bạn gửi quá nhiều yêu cầu. Vui lòng thử lại sau.",
-            "errors": [],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-    else:
-        response = JSONResponse(status_code=429, content={"detail": detail})
-    return add_rate_limit_headers(request, response)
-
-
-async def limited_http_exception_handler(
+async def app_http_exception_handler(
     request: Request,
     exc: StarletteHTTPException,
 ) -> Response:
     response = await fastapi_http_exception_handler(request, exc)
     if request.url.path.startswith("/auth/"):
         detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
-        code = detail.get("code") or ({400: "INVALID_INPUT", 401: "AUTH_FAILED", 403: "FORBIDDEN", 409: "CONFLICT", 429: "TOO_MANY_REQUESTS"}.get(exc.status_code, "SERVER_ERROR"))
+        code = detail.get("code") or ({400: "INVALID_INPUT", 401: "AUTH_FAILED", 403: "FORBIDDEN", 409: "CONFLICT"}.get(exc.status_code, "SERVER_ERROR"))
         response = JSONResponse(status_code=exc.status_code, content={
             "success": False,
             "code": code,
@@ -192,11 +163,10 @@ async def limited_http_exception_handler(
             "errors": detail.get("errors", []),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }, headers=dict(response.headers))
-    return add_rate_limit_headers(request, response)
+    return response
 
 
-app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
-app.add_exception_handler(StarletteHTTPException, limited_http_exception_handler)
+app.add_exception_handler(StarletteHTTPException, app_http_exception_handler)
 
 
 @app.exception_handler(RequestValidationError)

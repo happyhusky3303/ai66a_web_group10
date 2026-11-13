@@ -172,11 +172,4 @@ database migration leaves existing balances and predictions unchanged.
 Users can claim a 500-point gift once per UTC date through the Daily Gift panel.
 The balance increases when the authenticated claim succeeds.
 
-## Rate limits
-
-SlowAPI limits each client IP to 5 requests/minute for registration and login,
-10/minute for predictions, and 20/minute each for matches and leaderboard.
-The external football provider is additionally protected by a shared in-memory
-300-second response cache. On Match Center, signed-in users see the available
-prediction requests and reset countdown; this request allowance is shared by
-visitors using the same IP address.
+The app caches football provider match responses in memory for five minutes.
