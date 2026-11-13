@@ -496,6 +496,7 @@ async function submitPrediction(matchId, winner, button) {
       body: JSON.stringify({ user_id: currentUser.id, match_id: matchId, predicted_winner: winner, stake }),
     });
     currentUser.points = result.user_points;
+    renderNavAccount();
     updatePredictionControls();
     buttons.forEach((choice) => { choice.dataset.predictionSubmitted = "true"; });
     renderPredictionQuota();
@@ -658,6 +659,7 @@ function initDailyGift() {
       currentUser = result.user;
       dailyGift = result.daily_reward;
       giftBalanceRevision++;
+      renderNavAccount();
       if (document.querySelector("#points-history")) void loadPointsHistory();
       for (const selector of ["#user-points", "#kpi-points"]) {
         const balance = document.querySelector(selector);
@@ -675,6 +677,18 @@ function initDailyGift() {
       renderDailyGift();
     }
   });
+}
+
+function renderNavAccount() {
+  const account = document.querySelector("#nav-account");
+  if (!account) return;
+  account.classList.toggle("hidden", !currentUser);
+  if (!currentUser) return;
+
+  const avatar = account.querySelector("#nav-avatar");
+  avatar.textContent = Array.from(currentUser.username)[0].toUpperCase();
+  avatar.setAttribute("aria-label", currentUser.username);
+  account.querySelector("#nav-points").textContent = formatPoints(currentUser.points) + " pts";
 }
 
 async function loadCurrentUser({ signal, propagateError = false } = {}) {
@@ -710,6 +724,7 @@ async function loadCurrentUser({ signal, propagateError = false } = {}) {
     }
   }
   document.querySelectorAll("[data-admin-link]").forEach(link => link.classList.toggle("hidden", !currentUserIsAdmin));
+  renderNavAccount();
   updateDailyGift(dailyReward);
   if (loadError) {
     if (propagateError) throw loadError;
@@ -1077,6 +1092,8 @@ async function initHome() {
       const balanceRevision = giftBalanceRevision;
       const data = await apiRequest("/api/my-matches", { signal: controller.signal });
       if (balanceRevision !== giftBalanceRevision) data.user_points = currentUser.points;
+      currentUser.points = data.user_points;
+      renderNavAccount();
       renderHomeAnalytics(data);
       renderWeeklyResults(data.predictions || []);
       void loadPointsHistory();
@@ -1087,6 +1104,8 @@ async function initHome() {
         authRequired.classList.remove("hidden");
         document.querySelector("#auth-link")?.classList.remove("hidden");
         document.querySelector("#logout-button")?.classList.add("hidden");
+        currentUser = null;
+        renderNavAccount();
       } else {
         showNotice(notice, controller.signal.aborted ? "The dashboard took too long to load." : error.message);
         const retry = document.createElement("button");
@@ -1412,6 +1431,8 @@ async function loadMyMatches() {
     myPredictionsData = data.predictions || [];
 
     if (userPointsEl && data.user_points !== undefined && balanceRevision === giftBalanceRevision) {
+      currentUser.points = data.user_points;
+      renderNavAccount();
       userPointsEl.textContent = formatPoints(data.user_points);
     }
 
@@ -1605,6 +1626,7 @@ function createMyMatchRow(item) {
 
 document.addEventListener("DOMContentLoaded", () => {
   initDailyGift();
+  if (["create-match", "users"].includes(document.body.dataset.page)) void loadCurrentUser();
   if (document.body.dataset.page === "home") initHome();
   if (document.body.dataset.page === "match-center") initMatchCenter();
   if (document.body.dataset.page === "match-detail") initMatchDetail();

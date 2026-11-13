@@ -316,6 +316,10 @@
       try {
         const result = await post("/users/" + selected.id + "/" + kind, { ...payload, request_id: pending.id });
         dialog.close();
+        if (currentUser?.username === result.username) {
+          currentUser.points = result.points;
+          renderNavAccount();
+        }
         showNotice(message, result.username + " updated · " + formatPoints(result.points) + " available points.", "success");
         await load();
       } catch (error) {
