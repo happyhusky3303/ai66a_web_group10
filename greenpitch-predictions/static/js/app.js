@@ -279,14 +279,14 @@ function applyMatchFilter() {
     if (!element) continue;
 
     const isGroupTypeVisible = selectedType === key || (selectedType === "all"
-      && (key !== "awaiting" || element.querySelector("tbody tr")));
+      && (key !== "awaiting" || element.querySelector(".fixture-card")));
     if (!isGroupTypeVisible) {
       element.classList.add("hidden");
       continue;
     }
 
     element.classList.remove("hidden");
-    const rows = element.querySelectorAll("tbody tr");
+    const rows = element.querySelectorAll(".fixture-card");
     let visibleInGroup = 0;
     const showPredicted = document.querySelector("#show-predicted-filter")?.checked || false;
 
@@ -405,11 +405,12 @@ function createTeamPair(homeName, homeCrest, awayName, awayCrest, centerText = "
 }
 
 function createMatchRow(match) {
-  const row = document.createElement("tr");
+  const row = document.createElement("article");
+  row.className = "fixture-card";
   row.dataset.competition = match.competition || "";
   row.dataset.status = match.status || "";
   row.dataset.predicted = String(predictedMatchIds.has(String(match.id)));
-  const matchCell = document.createElement("td");
+  const matchCell = document.createElement("div");
   matchCell.className = "match-cell";
   const competition = document.createElement("span");
   competition.className = "competition-name";
@@ -426,22 +427,26 @@ function createMatchRow(match) {
     match.away_crest,
     resultText,
   );
-  matchCell.append(competition, teams);
+  const matchup = document.createElement("a");
+  matchup.href = "/match/" + encodeURIComponent(match.id);
+  matchup.className = "fixture-matchup";
+  matchup.append(teams);
+  matchCell.append(competition, matchup);
 
-  const dateCell = document.createElement("td");
+  const dateCell = document.createElement("div");
   dateCell.className = "mono date-cell";
   dateCell.textContent = match.utc_date
     ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(match.utc_date))
     : "—";
 
-  const statusCell = document.createElement("td");
+  const statusCell = document.createElement("div");
   const status = document.createElement("span");
   const statusClass = match.status.toLowerCase().replaceAll(" ", "-");
   status.className = `status status-${statusClass}`;
   status.textContent = match.status;
   statusCell.append(status);
 
-  const detailsCell = document.createElement("td");
+  const detailsCell = document.createElement("div");
   detailsCell.className = "prediction-cell";
   if (isEnded) {
     const prediction = myPredictionChoices.get(String(match.id));
@@ -466,15 +471,14 @@ function createMatchRow(match) {
     label.textContent = "Net points";
     points.append(label, result);
     detailsCell.append(points);
-  } else {
-    const viewLink = document.createElement("a");
-    viewLink.href = `/match/${encodeURIComponent(match.id)}`;
-    viewLink.className = "button button-primary view-match-button";
-    viewLink.textContent = "View match";
-    detailsCell.append(viewLink);
   }
 
-  row.append(matchCell, dateCell, statusCell, detailsCell);
+  const meta = document.createElement("div");
+  meta.className = "fixture-meta";
+  meta.append(dateCell);
+  if (match.status !== "Before") meta.append(statusCell);
+  meta.append(detailsCell);
+  row.append(matchCell, meta);
   return row;
 }
 

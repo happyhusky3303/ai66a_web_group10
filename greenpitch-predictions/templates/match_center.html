@@ -83,12 +83,7 @@
                 <span id="ongoing-count" class="count-label">0 live</span>
               </div>
               <div id="ongoing-empty" class="empty-state hidden">No matches currently ongoing.</div>
-              <div class="table-wrap">
-                <table class="match-table">
-                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">RESULT / POINTS</th></tr></thead>
-                  <tbody id="ongoing-matches-body"></tbody>
-                </table>
-              </div>
+              <div class="fixture-list" id="ongoing-matches-body"></div>
             </div>
 
             <div class="match-group" id="upcoming-group">
@@ -99,12 +94,7 @@
                 <span id="upcoming-count" class="count-label">0 upcoming</span>
               </div>
               <div id="upcoming-empty" class="empty-state hidden">No upcoming fixtures scheduled.</div>
-              <div class="table-wrap">
-                <table class="match-table">
-                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">RESULT / POINTS</th></tr></thead>
-                  <tbody id="upcoming-matches-body"></tbody>
-                </table>
-              </div>
+              <div class="fixture-list" id="upcoming-matches-body"></div>
             </div>
 
             <div class="match-group hidden" id="awaiting-group">
@@ -113,12 +103,7 @@
                 <span id="awaiting-count" class="count-label"></span>
               </div>
               <div id="awaiting-empty" class="empty-state hidden">No simulated matches are awaiting a result.</div>
-              <div class="table-wrap">
-                <table class="match-table">
-                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">RESULT / POINTS</th></tr></thead>
-                  <tbody id="awaiting-matches-body"></tbody>
-                </table>
-              </div>
+              <div class="fixture-list" id="awaiting-matches-body"></div>
             </div>
 
             <div class="match-group" id="ended-group">
@@ -129,12 +114,7 @@
                 <span id="ended-count" class="count-label">0 ended</span>
               </div>
               <div id="ended-empty" class="empty-state hidden">No ended matches for this period.</div>
-              <div class="table-wrap">
-                <table class="match-table">
-                  <thead><tr><th scope="col">MATCH</th><th scope="col">KICK-OFF</th><th scope="col">STATUS</th><th scope="col">RESULT / POINTS</th></tr></thead>
-                  <tbody id="ended-matches-body"></tbody>
-                </table>
-              </div>
+              <div class="fixture-list" id="ended-matches-body"></div>
             </div>
           </section>
             <section class="card full-width-card leaderboard-card"

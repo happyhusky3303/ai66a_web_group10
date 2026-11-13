@@ -423,3 +423,42 @@ h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
 @media (max-width: 850px) {
   .trend-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+.fixture-list { display: grid; gap: 12px; }
+.fixture-card {
+  min-width: 0;
+  padding: clamp(10px, 2vw, 18px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--green-soft);
+}
+.fixture-card .competition-name { text-align: center; margin-bottom: 8px; }
+.fixture-matchup { display: block; border-radius: 8px; }
+.fixture-matchup:hover .team-pair { background: var(--surface-raised); }
+.fixture-card .team-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(6px, 2vw, 18px);
+  padding: 8px;
+  border-block: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.fixture-card .team-pair > :first-child { flex-direction: row-reverse; }
+.fixture-card .team-pair > :last-child { flex-direction: row-reverse; }
+.fixture-card .team-name { white-space: normal; overflow-wrap: anywhere; font-size: clamp(12px, 1.4vw, 17px); font-weight: 750; }
+.fixture-card .team-logo { width: clamp(26px, 5vw, 48px); height: clamp(26px, 5vw, 48px); flex-basis: auto; flex-shrink: 0; }
+.fixture-card :is(.team-versus, .team-score) {
+  display: grid;
+  place-items: center;
+  min-width: 2.5rem;
+  padding: .45rem;
+  border-radius: 6px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-weight: 800;
+}
+.fixture-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; }
+.fixture-meta .prediction-cell { margin-inline-start: auto; }
+.fixture-meta .prediction-cell:empty { display: none; }
