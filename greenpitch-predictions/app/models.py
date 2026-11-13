@@ -89,3 +89,11 @@ class PointsEvent(Base):
     delta: Mapped[int] = mapped_column(Integer)
     kind: Mapped[str] = mapped_column(String(24))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ProviderFixture(Base):
+    __tablename__ = "provider_fixtures"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    payload: Mapped[dict] = mapped_column(JSON)
+    updated_at: Mapped[str] = mapped_column(String(64))

@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import time
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 import httpx
@@ -11,7 +11,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import SimulatedMatch
+from app.models import ProviderFixture, SimulatedMatch
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from app.simulated_matches import get_simulated_match, simulated_fixture
 
 from app.utils.rate_limit import limiter
@@ -70,6 +72,30 @@ def _normalize_match(match: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def store_fixtures(db: Session, fixtures: list[dict]) -> None:
+    insert = pg_insert if db.get_bind().dialect.name == "postgresql" else sqlite_insert
+    for fixture in sorted(fixtures, key=lambda item: item["id"]):
+        raw = fixture.get("provider_data")
+        if not raw or not fixture["id"].isascii() or not fixture["id"].isdigit():
+            continue
+        statement = insert(ProviderFixture).values(
+            id=fixture["id"], payload=fixture, updated_at=raw.get("lastUpdated") or "",
+        )
+        db.execute(statement.on_conflict_do_update(
+            index_elements=[ProviderFixture.id],
+            set_={"payload": statement.excluded.payload, "updated_at": statement.excluded.updated_at},
+            where=statement.excluded.updated_at >= ProviderFixture.updated_at,
+        ))
+
+
+def fixture_window() -> dict[str, str]:
+    today = datetime.now(timezone.utc).date()
+    return {
+        "dateFrom": (today - timedelta(days=1)).isoformat(),
+        "dateTo": (today + timedelta(days=7)).isoformat(),
+    }
+
+
 async def _fetch_matches() -> list[dict[str, Any]]:
     global _cached_matches, _cache_expires_at, _cache_fetched_at, _requests_available, _counter_reset_at
     api_key = os.getenv("FOOTBALL_DATA_API_KEY")
@@ -100,10 +126,7 @@ async def _fetch_matches() -> list[dict[str, Any]]:
                 headers={"Retry-After": str(seconds_remaining)},
             )
 
-        params = {
-            "dateFrom": (date.today() - timedelta(days=1)).isoformat(),
-            "dateTo": (date.today() + timedelta(days=7)).isoformat(),
-        }
+        params = fixture_window()
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
@@ -199,13 +222,24 @@ async def _fetch_matches() -> list[dict[str, Any]]:
 async def list_matches(request: Request, response: Response, db: Annotated[Session, Depends(get_db)]) -> dict[str, Any]:
     simulated = [simulated_fixture(item) for item in db.scalars(select(SimulatedMatch))]
     live_data_unavailable = False
-    try:
-        matches = await asyncio.wait_for(_fetch_matches(), timeout=4) if simulated else await _fetch_matches()
-    except (HTTPException, asyncio.TimeoutError):
-        if not simulated:
-            raise
-        matches = []
-        live_data_unavailable = True
+    if os.getenv("MATCH_CENTER_FROM_DATABASE") == "1":
+        window = fixture_window()
+        kickoff = ProviderFixture.payload["utc_date"].as_string()
+        matches = [fixture.payload for fixture in db.scalars(
+            select(ProviderFixture)
+            .where(kickoff >= window["dateFrom"], kickoff < window["dateTo"])
+            .order_by(kickoff, ProviderFixture.id)
+        )]
+    else:
+        try:
+            matches = await asyncio.wait_for(_fetch_matches(), timeout=4) if simulated else await _fetch_matches()
+        except (HTTPException, asyncio.TimeoutError):
+            if not simulated:
+                raise
+            matches = []
+            live_data_unavailable = True
+        store_fixtures(db, matches)
+        db.commit()
     if simulated:
         matches = sorted([*matches, *simulated], key=lambda item: (item.get("utc_date") or "", item["id"]))
     return {
@@ -224,8 +258,20 @@ async def get_match(match_id: str, request: Request, response: Response, db: Ann
         if simulated is None:
             raise HTTPException(status_code=404, detail="Match was not found in the current fixtures.")
         return simulated_fixture(simulated)
-    matches = await _fetch_matches()
+    saved = db.get(ProviderFixture, match_id)
+    if saved and saved.payload["status"] == "Ended":
+        return saved.payload
+    try:
+        matches = await _fetch_matches()
+    except HTTPException:
+        if saved:
+            return saved.payload
+        raise
     match = next((item for item in matches if item["id"] == match_id), None)
     if match is None:
-        raise HTTPException(status_code=404, detail="Match was not found in the current fixtures.")
+        if saved:
+            return saved.payload
+        raise HTTPException(status_code=404, detail="Match was not found.")
+    store_fixtures(db, [match])
+    db.commit()
     return match

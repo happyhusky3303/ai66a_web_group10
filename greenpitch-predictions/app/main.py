@@ -1,8 +1,10 @@
+import asyncio
+import sys
 from hashlib import sha256
 import logging
 import os
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, AsyncIterator
@@ -41,6 +43,40 @@ if not session_secret:
 
 
 from sqlalchemy import inspect, select, text, update
+
+async def run_fixture_job(mode: str) -> None:
+    while True:
+        status = None
+        try:
+            process = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "app.reconcile_fixtures", mode, "--apply",
+            )
+            try:
+                status = await process.wait()
+            except asyncio.CancelledError:
+                if process.returncode is None:
+                    try:
+                        process.terminate()
+                    except ProcessLookupError:
+                        pass
+                    await process.wait()
+                raise
+            if status:
+                logger.warning("Fixture job %s exited with status %d", mode, status)
+        except OSError:
+            logger.exception("Could not start fixture job %s", mode)
+
+        delay = 900
+        if mode == "--window":
+            now = datetime.now(timezone.utc)
+            next_run = now.replace(hour=0, minute=5, second=0, microsecond=0)
+            if next_run <= now:
+                next_run += timedelta(days=1)
+            delay = (next_run - now).total_seconds()
+            if status != 0:
+                delay = min(delay, 900)
+        await asyncio.sleep(delay)
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -81,7 +117,18 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             if col not in simulated_columns:
                 conn.execute(text(f"ALTER TABLE simulated_matches ADD COLUMN {col} {col_type}"))
     bootstrap_admin()
-    yield
+    jobs = []
+    if os.getenv("FOOTBALL_DATA_API_KEY") and os.getenv("FIXTURE_JOBS_ENABLED", "1") == "1":
+        jobs = [
+            asyncio.create_task(run_fixture_job(mode))
+            for mode in ("--window", "--overdue")
+        ]
+    try:
+        yield
+    finally:
+        for job in jobs:
+            job.cancel()
+        await asyncio.gather(*jobs, return_exceptions=True)
 
 
 def bootstrap_admin() -> None:

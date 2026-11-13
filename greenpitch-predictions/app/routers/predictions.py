@@ -12,9 +12,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import PointsEvent, Prediction, SimulatedMatch, User
+from app.models import PointsEvent, ProviderFixture, Prediction, SimulatedMatch, User
 from app.routers.auth import get_current_user
-from app.routers.matches import _fetch_matches
+from app.routers.matches import _fetch_matches, store_fixtures
 from app.simulated_matches import get_simulated_match, simulated_fixture, simulated_match_id
 from app.utils.rate_limit import limiter
 
@@ -111,6 +111,7 @@ async def create_prediction(
             detail="Your available points are insufficient for this stake.",
         )
 
+    store_fixtures(db, [match])
     prediction = Prediction(
         user_id=user.id,
         match_id=payload.match_id,
@@ -239,6 +240,10 @@ async def get_my_matches(
         matches = []
         live_data_unavailable = True
     matches_by_id = {str(m["id"]): m for m in matches}
+    provider_ids = {pred.match_id for pred in predictions if not pred.match_id.startswith("sim-")}
+    if provider_ids:
+        for fixture in db.scalars(select(ProviderFixture).where(ProviderFixture.id.in_(provider_ids))):
+            matches_by_id.setdefault(fixture.id, fixture.payload)
     simulated_ids = {match_id for pred in predictions if (match_id := simulated_match_id(pred.match_id)) is not None}
     if simulated_ids:
         for item in db.scalars(select(SimulatedMatch).where(SimulatedMatch.id.in_(simulated_ids))):
